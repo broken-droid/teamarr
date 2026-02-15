@@ -136,19 +136,19 @@ Get version from `pyproject.toml` line 7, append `-dev+<short_hash>` of HEAD com
 ## 🚀 v<version>-dev+<hash> — <YYYY-MM-DD>
 
 🐛 **Bug Fixes**
-- <one-liner> (`hash`)
+- <one-liner> (#issue) (`hash`)
 
 ✨ **New Features**
-- <one-liner> (`hash`)
+- <one-liner> (#issue) (`hash`)
 
 ⚡ **Enhancements**
-- <one-liner> (`hash`)
+- <one-liner> (#issue) (`hash`)
 
 🎨 **UI/UX**
-- <one-liner> (`hash`)
+- <one-liner> (#issue) (`hash`)
 
 🔧 **Under the Hood**
-- <one-liner> (`hash`)
+- <one-liner> — thanks @contributor (#PR) (`hash`)
 ```
 
 ### Release Template
@@ -157,19 +157,19 @@ Get version from `pyproject.toml` line 7, append `-dev+<short_hash>` of HEAD com
 ## 🎉 v<version> — <YYYY-MM-DD>
 
 🐛 **Bug Fixes**
-- <one-liner>
+- <one-liner> (#issue)
 
 ✨ **New Features**
-- <one-liner>
+- <one-liner> (#issue)
 
 ⚡ **Enhancements**
-- <one-liner>
+- <one-liner> (#issue)
 
 🎨 **UI/UX**
-- <one-liner>
+- <one-liner> (#issue)
 
 🔧 **Under the Hood**
-- <one-liner>
+- <one-liner> — thanks @contributor (#PR)
 ```
 
 ### Rules
@@ -177,6 +177,8 @@ Get version from `pyproject.toml` line 7, append `-dev+<short_hash>` of HEAD com
 - Categories (in order): 🐛 Bug Fixes, ✨ New Features, ⚡ Enhancements, 🎨 UI/UX, 🔧 Under the Hood
 - **Omit empty categories** — only include sections that have items
 - Dev pushes include commit hashes; releases do not
+- **ALWAYS include issue numbers** — append `(#123)` to items that close or relate to a GitHub issue
+- **ALWAYS credit contributors** — append `— thanks @username (#PR)` for community PR contributions
 - Each item is one concise line — no multi-line descriptions
 - No extra commentary — just the changelog block ready to paste
 
@@ -233,6 +235,9 @@ Provider Layer   → teamarr/providers/ (espn, hockeytech, cricket_hybrid, tsdb)
 - HockeyTech (50) - CHL, AHL, PWHL, USHL
 - CricketHybrid (55) - Cricket
 - TSDB (100) - Fallback
+
+**Dispatcharr Sync Reliability** (`lifecycle/service.py`):
+All `update_channel` calls go through `_safe_update_channel`, which checks `OperationResult.success` before persisting to local DB. On API failure, the DB stays unchanged so drift is re-detected on the next generation run. Profile sync also compares against Dispatcharr's actual state (`current_channel.channel_profile_ids`) for self-healing. Reconciliation (`reconciliation.py`) detects stream and profile drift as additional drift fields.
 
 ## Key Subsystems
 

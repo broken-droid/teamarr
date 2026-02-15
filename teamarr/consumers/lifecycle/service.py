@@ -39,6 +39,18 @@ class ChannelLifecycleService:
     - Duplicate handling (consolidate, separate, ignore)
     - Exception keyword handling
 
+    Sync Reliability
+    ================
+    All Dispatcharr ``update_channel`` calls go through ``_safe_update_channel``
+    which checks ``OperationResult.success`` before allowing local DB writes.
+    On API failure the DB is left unchanged, so the next generation run
+    re-detects the drift and retries naturally — no retry queue needed.
+
+    Profile sync additionally compares against Dispatcharr's actual state
+    (``current_channel.channel_profile_ids``) for self-healing: if the
+    Dispatcharr side drifted from what the DB recorded, the correct
+    profiles are pushed even when the DB appears in sync.
+
     Architecture — Parallel Paths
     =============================
     Three code paths resolve channel settings. They MUST stay in sync:
@@ -165,6 +177,59 @@ class ChannelLifecycleService:
         # Dynamic group/profile resolver
         self._dynamic_resolver = DynamicResolver()
 
+        # Per-run counters for observability (reset in clear_caches)
+        self._dispatcharr_failure_count = 0
+        self._stream_drift_fix_count = 0
+
+    def _safe_update_channel(
+        self,
+        channel_id: int,
+        data: dict,
+        context: str,
+    ) -> bool:
+        """Update a Dispatcharr channel with result checking.
+
+        Closed-loop contract: callers MUST check the return value before
+        persisting corresponding state to the local DB.  When the API call
+        fails the local DB is left unchanged so the drift is re-detected
+        and retried on the next generation run — no retry queue needed.
+
+        Args:
+            channel_id: Dispatcharr channel ID to update.
+            data: Fields to send to the PATCH endpoint.
+            context: Human-readable label for log messages
+                     (e.g. "bulk settings sync", "logo assignment").
+
+        Returns:
+            True if Dispatcharr confirmed the update, False otherwise.
+        """
+        if not self._channel_manager:
+            return False
+
+        try:
+            result = self._channel_manager.update_channel(channel_id, data)
+            if result and result.success:
+                return True
+
+            error_msg = result.error if result else "no response"
+            logger.warning(
+                "[LIFECYCLE] Dispatcharr update failed (%s) for channel %d: %s",
+                context,
+                channel_id,
+                error_msg,
+            )
+            self._dispatcharr_failure_count += 1
+            return False
+        except Exception as exc:
+            logger.warning(
+                "[LIFECYCLE] Dispatcharr update exception (%s) for channel %d: %s",
+                context,
+                channel_id,
+                exc,
+            )
+            self._dispatcharr_failure_count += 1
+            return False
+
     def compute_external_occupied(self) -> set[int]:
         """Compute channel numbers in Dispatcharr NOT managed by Teamarr.
 
@@ -200,6 +265,8 @@ class ChannelLifecycleService:
             self._logo_manager.clear_cache()
         self._exception_keywords = None
         self._pending_profile_changes = {}
+        self._dispatcharr_failure_count = 0
+        self._stream_drift_fix_count = 0
 
     def _collect_profile_change(
         self,
@@ -676,6 +743,18 @@ class ChannelLifecycleService:
                     profile_err,
                 )
 
+        # Populate observability counters
+        result.dispatcharr_failures += self._dispatcharr_failure_count
+        result.stream_drift_fixes += self._stream_drift_fix_count
+
+        # Summary log for generation run visibility
+        if self._dispatcharr_failure_count or self._stream_drift_fix_count:
+            logger.warning(
+                "[LIFECYCLE] Generation: %d Dispatcharr API failure(s), %d stream drift fix(es)",
+                self._dispatcharr_failure_count,
+                self._stream_drift_fix_count,
+            )
+
         return result
 
     def _handle_cross_group_overlap(
@@ -807,13 +886,27 @@ class ChannelLifecycleService:
 
                 # Sync with Dispatcharr - use ordered stream list to respect rules
                 if self._channel_manager and existing.dispatcharr_channel_id:
+                    ordered_streams = get_ordered_stream_ids(conn, existing.id)
                     with self._dispatcharr_lock:
-                        # Get streams in priority order from DB
-                        ordered_streams = get_ordered_stream_ids(conn, existing.id)
-                        self._channel_manager.update_channel(
+                        api_ok = self._safe_update_channel(
                             existing.dispatcharr_channel_id,
                             {"streams": tuple(ordered_streams)},
+                            "cross-group stream add",
                         )
+                    if not api_ok:
+                        # Roll back the DB insert so drift is retried next run
+                        from teamarr.database.channels import remove_stream_from_channel
+
+                        remove_stream_from_channel(conn, existing.id, stream_id)
+                        result = StreamProcessResult()
+                        result.errors.append(
+                            {
+                                "stream": stream_name,
+                                "event_id": event_id,
+                                "error": "Dispatcharr update failed (cross-group stream add)",
+                            }
+                        )
+                        return result
 
                 log_channel_history(
                     conn=conn,
@@ -883,6 +976,7 @@ class ChannelLifecycleService:
             get_ordered_stream_ids,
             log_channel_history,
             mark_channel_deleted,
+            remove_stream_from_channel,
             stream_exists_on_channel,
         )
 
@@ -969,13 +1063,16 @@ class ChannelLifecycleService:
 
                 # Sync with Dispatcharr - use ordered stream list to respect rules
                 if self._channel_manager:
+                    ordered_streams = get_ordered_stream_ids(conn, existing.id)
                     with self._dispatcharr_lock:
-                        # Get streams in priority order from DB
-                        ordered_streams = get_ordered_stream_ids(conn, existing.id)
-                        self._channel_manager.update_channel(
+                        api_ok = self._safe_update_channel(
                             existing.dispatcharr_channel_id,
                             {"streams": ordered_streams},
+                            "consolidate stream add",
                         )
+                    if not api_ok:
+                        # Roll back the DB insert so drift is retried next run
+                        remove_stream_from_channel(conn, existing.id, stream_id)
 
                 # Log history
                 log_channel_history(
@@ -1529,12 +1626,12 @@ class ChannelLifecycleService:
                 ch_streams = current_channel.streams
                 current_stream_ids = list(ch_streams) if ch_streams else []
                 if stream_id not in current_stream_ids:
-                    # Stream changed - update to use current stream
-                    # Note: For consolidate mode, this adds streams; for separate, this replaces
+                    # Stream drift — Dispatcharr is missing a stream the DB expects
                     new_streams = current_stream_ids + [stream_id]
                     update_data["streams"] = new_streams
                     db_updates["dispatcharr_stream_id"] = stream_id
                     changes_made.append(f"streams: added {stream_id}")
+                    self._stream_drift_fix_count += 1
 
             # Note: Stream ordering is applied as a final step after all matching
             # See generation.py Step 3b - this ensures all streams from all groups
@@ -1564,21 +1661,26 @@ class ChannelLifecycleService:
                     db_updates["scheduled_delete_at"] = expected_delete_str
                     changes_made.append("scheduled_delete_at updated")
 
-            # Apply Dispatcharr updates
+            # Apply Dispatcharr updates (closed-loop: only persist DB on success)
             if update_data:
                 with self._dispatcharr_lock:
-                    self._channel_manager.update_channel(
+                    api_ok = self._safe_update_channel(
                         existing.dispatcharr_channel_id,
                         update_data,
+                        "bulk settings sync",
                     )
+                if not api_ok:
+                    # Don't persist DB changes — drift will be re-detected next run
+                    db_updates = {}
 
             # Apply DB updates
             if db_updates:
                 update_managed_channel(conn, existing.id, db_updates)
 
-            # 7. Sync channel_profile_ids
+            # 7. Sync channel_profile_ids (compares against Dispatcharr actual state)
             self._sync_channel_profiles(
-                conn, existing, group_config, event_sport, event_league, changes_made
+                conn, existing, group_config, event_sport, event_league, changes_made,
+                current_channel=current_channel,
             )
 
             # 8. Sync logo
@@ -1628,8 +1730,13 @@ class ChannelLifecycleService:
         event_sport: str | None,
         event_league: str | None,
         changes_made: list[str],
+        current_channel: Any = None,
     ) -> None:
         """Sync channel_profile_ids (supports dynamic {sport}/{league} resolution).
+
+        Self-healing: compares against Dispatcharr's actual profile state
+        (via current_channel) rather than only the local DB.  If Dispatcharr
+        drifted from what the DB says, the correct profiles are pushed.
 
         Dispatcharr profile semantics:
           [] = NO profiles, [0] = ALL profiles (sentinel), [1,2,...] = specific IDs
@@ -1652,14 +1759,39 @@ class ChannelLifecycleService:
         else:
             effective_profile_ids = [0]
 
+        # Self-healing: also compare against Dispatcharr's actual state.
+        # If the Dispatcharr API returned channel_profile_ids, use that as truth
+        # instead of relying only on our DB (which may be stale/desynced).
+        dispatcharr_profile_ids = None
+        if current_channel and current_channel.channel_profile_ids is not None:
+            dispatcharr_profile_ids = list(current_channel.channel_profile_ids)
+
         logger.debug(
             f"Channel '{existing.channel_name}' profile sync: "
             f"raw={raw_group_profiles}, resolved={effective_profile_ids}, "
-            f"stored={stored_profile_ids}"
+            f"stored={stored_profile_ids}, dispatcharr={dispatcharr_profile_ids}"
         )
 
-        if effective_profile_ids == stored_profile_ids:
+        # Detect drift: check both DB and Dispatcharr state
+        db_in_sync = effective_profile_ids == stored_profile_ids
+        dispatcharr_in_sync = (
+            dispatcharr_profile_ids is None  # API didn't include field — can't check
+            or sorted(effective_profile_ids) == sorted(dispatcharr_profile_ids)
+        )
+
+        if db_in_sync and dispatcharr_in_sync:
             return
+
+        if not dispatcharr_in_sync and db_in_sync:
+            logger.warning(
+                "[LIFECYCLE] Profile drift detected for '%s': "
+                "DB=%s but Dispatcharr=%s, pushing correct profiles %s",
+                existing.channel_name,
+                stored_profile_ids,
+                dispatcharr_profile_ids,
+                effective_profile_ids,
+            )
+            self._stream_drift_fix_count += 1
 
         logger.info(
             f"Channel '{existing.channel_name}' profiles changed: "
@@ -1669,10 +1801,13 @@ class ChannelLifecycleService:
 
         if is_sentinel:
             with self._dispatcharr_lock:
-                self._channel_manager.update_channel(
+                api_ok = self._safe_update_channel(
                     existing.dispatcharr_channel_id,
                     {"channel_profile_ids": effective_profile_ids},
+                    "profile sentinel update",
                 )
+            if not api_ok:
+                return  # Don't persist DB — drift retried next run
             if effective_profile_ids == [0]:
                 changes_made.append("profiles: all profiles")
             else:
@@ -1730,23 +1865,27 @@ class ChannelLifecycleService:
                     )
                     if logo_result.success and logo_result.logo:
                         new_logo_id = logo_result.logo.get("id")
-                        self._channel_manager.update_channel(
+                        api_ok = self._safe_update_channel(
                             existing.dispatcharr_channel_id,
                             {"logo_id": new_logo_id},
+                            "logo assignment",
                         )
-                        update_managed_channel(
-                            conn,
-                            existing.id,
-                            {"logo_url": logo_url, "dispatcharr_logo_id": new_logo_id},
-                        )
-                        changes_made.append("logo updated")
+                        if api_ok:
+                            update_managed_channel(
+                                conn,
+                                existing.id,
+                                {"logo_url": logo_url, "dispatcharr_logo_id": new_logo_id},
+                            )
+                            changes_made.append("logo updated")
 
         elif stored_logo_url and self._logo_manager:
             with self._dispatcharr_lock:
-                self._channel_manager.update_channel(
+                api_ok = self._safe_update_channel(
                     existing.dispatcharr_channel_id,
                     {"logo_id": None},
+                    "logo removal",
                 )
+            if api_ok:
                 update_managed_channel(
                     conn,
                     existing.id,
@@ -1782,20 +1921,21 @@ class ChannelLifecycleService:
         )
         if expected_stream_profile != current_stream_profile:
             with self._dispatcharr_lock:
-                update_result = self._channel_manager.update_channel(
+                api_ok = self._safe_update_channel(
                     existing.dispatcharr_channel_id,
                     {"stream_profile_id": expected_stream_profile},
+                    "stream profile assign",
                 )
-            logger.debug(
-                "[LIFECYCLE] Stream profile PATCH for '%s': %s → %s (success=%s)",
-                existing.channel_name,
-                current_stream_profile,
-                expected_stream_profile,
-                update_result.success if update_result else "no_result",
-            )
-            changes_made.append(
-                f"stream_profile: {current_stream_profile} → {expected_stream_profile}"
-            )
+            if api_ok:
+                logger.debug(
+                    "[LIFECYCLE] Stream profile PATCH for '%s': %s → %s",
+                    existing.channel_name,
+                    current_stream_profile,
+                    expected_stream_profile,
+                )
+                changes_made.append(
+                    f"stream_profile: {current_stream_profile} → {expected_stream_profile}"
+                )
 
     def _remove_stream_from_dispatcharr_channel(
         self,
@@ -1825,11 +1965,11 @@ class ChannelLifecycleService:
                 return False
 
             current_ids.remove(stream_id)
-            self._channel_manager.update_channel(
+            return self._safe_update_channel(
                 dispatcharr_channel_id,
                 {"streams": current_ids},
+                "stream removal",
             )
-            return True
 
     def delete_managed_channel(
         self,
@@ -2367,13 +2507,19 @@ class ChannelLifecycleService:
                         )
                         continue
 
-                    # Update Dispatcharr
+                    # Update Dispatcharr (closed-loop: skip DB on failure)
                     if self._channel_manager:
                         with self._dispatcharr_lock:
-                            self._channel_manager.update_channel(
+                            api_ok = self._safe_update_channel(
                                 channel.dispatcharr_channel_id,
                                 {"channel_number": next_number},
+                                "channel number realloc (event group)",
                             )
+                        if not api_ok:
+                            next_number += 1
+                            while next_number in ext_set:
+                                next_number += 1
+                            continue
 
                     # Update DB
                     update_managed_channel(conn, channel.id, {"channel_number": next_number})
@@ -2517,13 +2663,19 @@ class ChannelLifecycleService:
                                 next_number += 1
                             continue
 
-                        # Need to reassign
+                        # Need to reassign (closed-loop: skip DB on failure)
                         if self._channel_manager:
                             with self._dispatcharr_lock:
-                                self._channel_manager.update_channel(
+                                api_ok = self._safe_update_channel(
                                     channel.dispatcharr_channel_id,
                                     {"channel_number": next_number},
+                                    "channel number realloc (recurring)",
                                 )
+                            if not api_ok:
+                                next_number += 1
+                                while next_number in ext_set:
+                                    next_number += 1
+                                continue
 
                         update_managed_channel(conn, channel.id, {"channel_number": next_number})
 

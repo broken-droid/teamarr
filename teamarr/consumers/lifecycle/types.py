@@ -75,6 +75,8 @@ class StreamProcessResult:
     logo_updated: list[dict] = field(default_factory=list)
     settings_updated: list[dict] = field(default_factory=list)
     deleted: list[dict] = field(default_factory=list)
+    dispatcharr_failures: int = 0  # Count of Dispatcharr API update failures
+    stream_drift_fixes: int = 0  # Count of stream drift corrections
 
     def merge(self, other: "StreamProcessResult") -> None:
         """Merge another result into this one."""
@@ -88,6 +90,8 @@ class StreamProcessResult:
         self.logo_updated.extend(other.logo_updated)
         self.settings_updated.extend(other.settings_updated)
         self.deleted.extend(other.deleted)
+        self.dispatcharr_failures += other.dispatcharr_failures
+        self.stream_drift_fixes += other.stream_drift_fixes
 
     def to_dict(self) -> dict:
         """Convert to dict for JSON serialization."""
@@ -110,6 +114,8 @@ class StreamProcessResult:
                 "error_count": len(self.errors),
                 "streams_removed_count": len(self.streams_removed),
                 "deleted_count": len(self.deleted),
+                "dispatcharr_failures": self.dispatcharr_failures,
+                "stream_drift_fixes": self.stream_drift_fixes,
             },
         }
 

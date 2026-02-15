@@ -22,6 +22,7 @@ class DispatcharrChannel:
     logo_url: str | None = None
     streams: tuple[int, ...] = field(default_factory=tuple)
     stream_profile_id: int | None = None
+    channel_profile_ids: tuple[int, ...] | None = None  # None = not in API response
 
     @classmethod
     def from_api(cls, data: dict) -> "DispatcharrChannel":
@@ -29,6 +30,13 @@ class DispatcharrChannel:
         streams = data.get("streams", [])
         if isinstance(streams, list):
             streams = tuple(streams)
+        raw_profiles = data.get("channel_profile_ids")
+        profile_ids = None
+        if raw_profiles is not None:
+            if isinstance(raw_profiles, list):
+                profile_ids = tuple(raw_profiles)
+            else:
+                profile_ids = (raw_profiles,) if raw_profiles else ()
         return cls(
             id=data["id"],
             uuid=data.get("uuid", ""),
@@ -41,6 +49,7 @@ class DispatcharrChannel:
             logo_url=data.get("logo_url"),
             streams=streams,
             stream_profile_id=data.get("stream_profile_id"),
+            channel_profile_ids=profile_ids,
         )
 
 

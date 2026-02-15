@@ -432,13 +432,14 @@ class ChannelReconciler:
         """Detect channels where Teamarr's expected state differs from Dispatcharr.
 
         Checks:
-        - Channel number mismatch
         - tvg_id mismatch
         - Channel group mismatch
-        - Stream profile mismatch
+        - Stream assignment mismatch (DB streams vs Dispatcharr streams)
+        - Profile assignment mismatch (DB profiles vs Dispatcharr profiles)
         """
         from teamarr.database.channels import (
             get_all_managed_channels,
+            get_channel_streams,
             get_managed_channels_for_group,
         )
 
@@ -491,6 +492,47 @@ class ChannelReconciler:
                         "actual": actual_group,
                     }
                 )
+
+            # Check stream assignments (DB vs Dispatcharr)
+            db_streams = get_channel_streams(conn, channel.id)
+            db_stream_ids = {
+                s.dispatcharr_stream_id
+                for s in db_streams
+                if getattr(s, "dispatcharr_stream_id", None)
+            }
+            dispatcharr_stream_ids = set(dispatcharr_channel.streams or ())
+            if db_stream_ids and db_stream_ids != dispatcharr_stream_ids:
+                drift_fields.append(
+                    {
+                        "field": "streams",
+                        "expected": sorted(db_stream_ids),
+                        "actual": sorted(dispatcharr_stream_ids),
+                    }
+                )
+
+            # Check profile assignments (DB vs Dispatcharr)
+            if dispatcharr_channel.channel_profile_ids is not None:
+                import json as _json
+
+                raw_db_profiles = getattr(channel, "channel_profile_ids", None)
+                db_profile_ids = []
+                if raw_db_profiles:
+                    if isinstance(raw_db_profiles, str):
+                        try:
+                            db_profile_ids = _json.loads(raw_db_profiles)
+                        except _json.JSONDecodeError:
+                            db_profile_ids = []
+                    elif isinstance(raw_db_profiles, list):
+                        db_profile_ids = raw_db_profiles
+                dispatcharr_profiles = list(dispatcharr_channel.channel_profile_ids)
+                if sorted(db_profile_ids) != sorted(dispatcharr_profiles):
+                    drift_fields.append(
+                        {
+                            "field": "channel_profile_ids",
+                            "expected": sorted(db_profile_ids),
+                            "actual": sorted(dispatcharr_profiles),
+                        }
+                    )
 
             if drift_fields:
                 issues.append(
@@ -597,19 +639,32 @@ class ChannelReconciler:
 
                         if update_data:
                             with self._dispatcharr_lock:
-                                self._channel_manager.update_channel(
+                                update_result = self._channel_manager.update_channel(
                                     issue.dispatcharr_channel_id,
                                     update_data,
                                 )
-                            result.issues_fixed.append(
-                                {
-                                    "issue_type": issue.issue_type,
-                                    "channel_name": issue.channel_name,
-                                    "action": "synced",
-                                    "fields": list(update_data.keys()),
-                                }
-                            )
-                            logger.info("[FIXED] Synced drift: %s", issue.channel_name)
+                            if update_result and update_result.success:
+                                result.issues_fixed.append(
+                                    {
+                                        "issue_type": issue.issue_type,
+                                        "channel_name": issue.channel_name,
+                                        "action": "synced",
+                                        "fields": list(update_data.keys()),
+                                    }
+                                )
+                                logger.info("[FIXED] Synced drift: %s", issue.channel_name)
+                            else:
+                                error_msg = (
+                                    update_result.error if update_result else "no response"
+                                )
+                                result.errors.append(
+                                    f"Drift fix failed for {issue.channel_name}: {error_msg}"
+                                )
+                                logger.warning(
+                                    "[FIX_ERROR] Drift sync failed for %s: %s",
+                                    issue.channel_name,
+                                    error_msg,
+                                )
 
                 elif issue.issue_type == "duplicate":
                     # Duplicate fix is more complex - skip for now
