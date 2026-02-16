@@ -1085,13 +1085,14 @@ function DefaultsTab({ formData, setFormData, isTeamTemplate, fieldRefs, setLast
       priority: 100,
       label: newLabel,
     }
-    // Get non-fallback conditions
-    const nonFallbacks = (formData.conditional_descriptions || []).filter((c) => c.priority !== 100)
-    setFormData((prev) => ({
-      ...prev,
-      conditional_descriptions: [...nonFallbacks, ...getFallbacksAsConditions(), newFallback],
-      description_template: null, // Clear single description when using fallbacks
-    }))
+    setFormData((prev) => {
+      const nonFallbacks = (prev.conditional_descriptions || []).filter((c) => c.priority !== 100)
+      return {
+        ...prev,
+        conditional_descriptions: [...nonFallbacks, ...getFallbacksAsConditions(), newFallback],
+        description_template: null,
+      }
+    })
     setExpandedFallbacks((prev) => new Set([...prev, effectiveFallbacks.length]))
   }
 
@@ -1107,19 +1108,20 @@ function DefaultsTab({ formData, setFormData, isTeamTemplate, fieldRefs, setLast
   const updateFallback = (index: number, field: "label" | "template", value: string) => {
     const updated = [...effectiveFallbacks]
     updated[index] = { ...updated[index], [field]: value }
-    // Convert back to conditional_descriptions
-    const nonFallbacks = (formData.conditional_descriptions || []).filter((c) => c.priority !== 100)
     const fallbackConditions = updated.map((f) => ({
       condition: "",
       template: f.template,
       priority: 100,
       label: f.label,
     }))
-    setFormData((prev) => ({
-      ...prev,
-      conditional_descriptions: [...nonFallbacks, ...fallbackConditions],
-      description_template: null, // Clear single description when using fallbacks
-    }))
+    setFormData((prev) => {
+      const nonFallbacks = (prev.conditional_descriptions || []).filter((c) => c.priority !== 100)
+      return {
+        ...prev,
+        conditional_descriptions: [...nonFallbacks, ...fallbackConditions],
+        description_template: null,
+      }
+    })
   }
 
   const removeFallback = (index: number) => {
@@ -1128,18 +1130,20 @@ function DefaultsTab({ formData, setFormData, isTeamTemplate, fieldRefs, setLast
       return
     }
     const updated = effectiveFallbacks.filter((_, i) => i !== index)
-    const nonFallbacks = (formData.conditional_descriptions || []).filter((c) => c.priority !== 100)
     const fallbackConditions = updated.map((f) => ({
       condition: "",
       template: f.template,
       priority: 100,
       label: f.label,
     }))
-    setFormData((prev) => ({
-      ...prev,
-      conditional_descriptions: [...nonFallbacks, ...fallbackConditions],
-      description_template: null,
-    }))
+    setFormData((prev) => {
+      const nonFallbacks = (prev.conditional_descriptions || []).filter((c) => c.priority !== 100)
+      return {
+        ...prev,
+        conditional_descriptions: [...nonFallbacks, ...fallbackConditions],
+        description_template: null,
+      }
+    })
     setExpandedFallbacks((prev) => {
       const next = new Set(prev)
       next.delete(index)
@@ -1359,9 +1363,6 @@ function ConditionsTab({ formData, setFormData, resolveTemplate, isTeamTemplate 
   const createPresetMutation = useCreatePreset()
   const deletePresetMutation = useDeletePreset()
 
-  // Get fallbacks to preserve when modifying conditions
-  const getFallbacks = () => (formData.conditional_descriptions || []).filter((c) => c.priority === 100)
-
   const addCondition = () => {
     // Default to first available condition, or is_home as fallback
     const defaultCondition = availableConditions.length > 0 ? availableConditions[0].name : "is_home"
@@ -1370,11 +1371,12 @@ function ConditionsTab({ formData, setFormData, resolveTemplate, isTeamTemplate 
       template: "",
       priority: 50, // Default conditional priority (not 100 which is for fallbacks)
     }
-    const fallbacks = getFallbacks()
-    setFormData((prev) => ({
-      ...prev,
-      conditional_descriptions: [...conditions, newCondition, ...fallbacks],
-    }))
+    setFormData((prev) => {
+      const all = prev.conditional_descriptions || []
+      const prevConditions = all.filter((c) => c.priority !== 100)
+      const fallbacks = all.filter((c) => c.priority === 100)
+      return { ...prev, conditional_descriptions: [...prevConditions, newCondition, ...fallbacks] }
+    })
     // Auto-expand the new condition
     setExpandedConditions((prev) => new Set([...prev, conditions.length]))
   }
@@ -1382,20 +1384,18 @@ function ConditionsTab({ formData, setFormData, resolveTemplate, isTeamTemplate 
   const updateCondition = (index: number, field: keyof ConditionalDescription, value: string | number) => {
     const updated = [...conditions]
     updated[index] = { ...updated[index], [field]: value }
-    const fallbacks = getFallbacks()
-    setFormData((prev) => ({
-      ...prev,
-      conditional_descriptions: [...updated, ...fallbacks],
-    }))
+    setFormData((prev) => {
+      const fallbacks = (prev.conditional_descriptions || []).filter((c) => c.priority === 100)
+      return { ...prev, conditional_descriptions: [...updated, ...fallbacks] }
+    })
   }
 
   const removeCondition = (index: number) => {
     const updated = conditions.filter((_, i) => i !== index)
-    const fallbacks = getFallbacks()
-    setFormData((prev) => ({
-      ...prev,
-      conditional_descriptions: [...updated, ...fallbacks],
-    }))
+    setFormData((prev) => {
+      const fallbacks = (prev.conditional_descriptions || []).filter((c) => c.priority === 100)
+      return { ...prev, conditional_descriptions: [...updated, ...fallbacks] }
+    })
     setExpandedConditions((prev) => {
       const newSet = new Set(prev)
       newSet.delete(index)
@@ -1419,17 +1419,16 @@ function ConditionsTab({ formData, setFormData, resolveTemplate, isTeamTemplate 
   }
 
   const applyPreset = (preset: ConditionPreset) => {
-    const fallbacks = getFallbacks()
     const presetConditions = preset.conditions.map((c) => ({
       condition: c.condition,
       template: c.template,
       priority: c.priority,
       condition_value: c.condition_value,
     }))
-    setFormData((prev) => ({
-      ...prev,
-      conditional_descriptions: [...presetConditions, ...fallbacks], // Preserve fallbacks
-    }))
+    setFormData((prev) => {
+      const fallbacks = (prev.conditional_descriptions || []).filter((c) => c.priority === 100)
+      return { ...prev, conditional_descriptions: [...presetConditions, ...fallbacks] }
+    })
     setShowPresetDialog(false)
     toast.success(`Applied preset "${preset.name}"`)
   }
