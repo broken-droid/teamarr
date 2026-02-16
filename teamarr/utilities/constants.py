@@ -378,7 +378,7 @@ LEAGUE_HINT_PATTERNS: list[tuple[str, str | list[str]]] = [
     (r"\bncaaf[:\s-]", "college-football"),
     (r"\bncaam[:\s-]", "mens-college-basketball"),
     (r"\bncaaw[:\s-]", "womens-college-basketball"),
-    (r"\bncaab[:\s-]", "mens-college-basketball"),  # Alternate abbreviation
+    (r"\bncaab[:\s-]", ["mens-college-basketball", "womens-college-basketball"]),
     # ==========================================================================
     # Soccer / Football - Multi-league umbrella brands first
     # ==========================================================================

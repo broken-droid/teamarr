@@ -697,6 +697,10 @@ def _clean_team_name(name: str) -> str:
     # Remove channel numbers like "(1)" or "[2]"
     name = re.sub(r"\s*[\(\[]\d+[\)\]]\s*$", "", name)
 
+    # Remove gender markers like (W), (M), (Women), (Men)
+    # Common in NCAAB streams: "LSU (W)", "Duke (M)"
+    name = re.sub(r"\s*\((?:W|M|Women|Men)\)", "", name, flags=re.IGNORECASE)
+
     # Remove HD, SD, 4K, UHD quality indicators (at start or end)
     name = re.sub(r"^\s*\b(HD|SD|FHD|4K|UHD)\b\s*", "", name, flags=re.IGNORECASE)
     name = re.sub(r"\s+\b(HD|SD|FHD|4K|UHD)\b\s*$", "", name, flags=re.IGNORECASE)
@@ -840,6 +844,51 @@ def detect_league_hint(text: str) -> str | list[str] | None:
         return None
 
     return DetectionKeywordService.detect_league(text)
+
+
+# Gender keywords that indicate women's leagues
+_WOMENS_KEYWORDS = re.compile(r"\(W\)|\bWomen", re.IGNORECASE)
+# Gender keywords that indicate men's leagues
+_MENS_KEYWORDS = re.compile(r"\(M\)|\bMen(?:'s|s)?\b", re.IGNORECASE)
+# Regex to identify gendered league codes
+_WOMENS_LEAGUE_RE = re.compile(r"\bwomens?\b", re.IGNORECASE)
+_MENS_LEAGUE_RE = re.compile(r"\bmens?\b", re.IGNORECASE)
+
+
+def _narrow_by_gender(
+    leagues: list[str], stream_name: str
+) -> str | list[str]:
+    """Narrow an umbrella league hint using gender markers in the stream name.
+
+    If the stream contains (W) or Women, keep only women's leagues.
+    If (M) or Men, keep only men's leagues.
+    If neither, return the full list.
+
+    Examples:
+        ["mens-college-basketball", "womens-college-basketball"] + "(W)"
+            → "womens-college-basketball"
+        ["mens-college-basketball", "womens-college-basketball"] + "(M)"
+            → "mens-college-basketball"
+        ["eng.2", "eng.3", "eng.4"] + "(W)"
+            → ["eng.2", "eng.3", "eng.4"]  (no gendered pair)
+    """
+    has_womens = _WOMENS_KEYWORDS.search(stream_name)
+    has_mens = _MENS_KEYWORDS.search(stream_name) if not has_womens else None
+
+    if not has_womens and not has_mens:
+        return leagues
+
+    # Check if any league in the list has gendered counterparts
+    if has_womens:
+        womens = [lg for lg in leagues if _WOMENS_LEAGUE_RE.search(lg)]
+        if womens:
+            return womens[0] if len(womens) == 1 else womens
+    elif has_mens:
+        mens = [lg for lg in leagues if _MENS_LEAGUE_RE.search(lg)]
+        if mens:
+            return mens[0] if len(mens) == 1 else mens
+
+    return leagues
 
 
 def detect_sport_hint(text: str) -> str | None:
@@ -1137,6 +1186,11 @@ def classify_stream(
         # Detect league and sport hints (useful for all categories)
         league_hint = detect_league_hint(text)
         sport_hint = detect_sport_hint(text)
+
+        # Narrow umbrella hints using gender markers (W)/(M)
+        # e.g., NCAAB with (W) → womens-college-basketball only
+        if isinstance(league_hint, list) and len(league_hint) > 1:
+            league_hint = _narrow_by_gender(league_hint, stream_name)
 
         # Step 1c: Apply custom league regex to override built-in detection
         # Uses ORIGINAL stream name (not normalized) for more flexible matching
