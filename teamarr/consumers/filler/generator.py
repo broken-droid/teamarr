@@ -222,6 +222,7 @@ class FillerGenerator:
                     day_end=day_end,
                     day_events=day_events,
                     prev_day_last_event=prev_day_last_event,
+                    next_future_event=next_future_event,
                     last_past_event=last_past_event,
                     team_config=team_config,
                     team_stats=team_stats,
@@ -259,6 +260,7 @@ class FillerGenerator:
         day_end: datetime,
         day_events: list[Event],
         prev_day_last_event: Event | None,
+        next_future_event: Event | None,
         last_past_event: Event | None,
         team_config: TeamChannelContext,
         team_stats: TeamStats | None,
@@ -324,12 +326,14 @@ class FillerGenerator:
                 pass
             elif postgame_start < postgame_end:
                 # Build context for postgame
-                # Find next game for .next context
+                # Find next game for .next context (same day first, then future days)
                 next_game = None
                 for event in day_events:
                     if event.start_time > last_game.start_time:
                         next_game = event
                         break
+                if not next_game:
+                    next_game = next_future_event
 
                 context = self._build_filler_context(
                     team_config=team_config,
