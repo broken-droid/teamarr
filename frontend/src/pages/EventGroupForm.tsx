@@ -150,9 +150,9 @@ export function EventGroupForm() {
   // Filter state for channel groups
   const [channelGroupFilter, setChannelGroupFilter] = useState("")
 
-  // Collapsible section states - all start collapsed
+  // Collapsible section states - league selection starts expanded for new groups
   const [basicSettingsExpanded, setBasicSettingsExpanded] = useState(false)
-  const [leagueSelectionExpanded, setLeagueSelectionExpanded] = useState(false)
+  const [leagueSelectionExpanded, setLeagueSelectionExpanded] = useState(!isEdit)
   const [streamTimezoneExpanded, setStreamTimezoneExpanded] = useState(false)
   const [channelSettingsExpanded, setChannelSettingsExpanded] = useState(false)
   const [channelGroupExpanded, setChannelGroupExpanded] = useState(false)
@@ -285,9 +285,18 @@ export function EventGroupForm() {
       }
 
       // Set soccer mode if present (map legacy 'all' → 'manual')
+      // Auto-detect: if group has soccer leagues but no soccer_mode, default to 'manual'
       if (group.soccer_mode) {
         const mode = group.soccer_mode === 'all' ? 'manual' : group.soccer_mode
         setSoccerMode(mode as SoccerMode)
+      } else if (cachedLeagues) {
+        const hasSoccerLeagues = group.leagues.some(slug => {
+          const league = cachedLeagues.find(l => l.slug === slug)
+          return league?.sport?.toLowerCase() === 'soccer'
+        })
+        if (hasSoccerLeagues) {
+          setSoccerMode('manual')
+        }
       }
       // Set soccer followed teams if present
       if (group.soccer_followed_teams) {
@@ -549,29 +558,6 @@ export function EventGroupForm() {
                 </Select>
               </div>
             )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* League Selection - Multi-Sport Mode (add mode only) */}
-      {groupMode === "multi" && !isEdit && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Select Leagues</CardTitle>
-            <CardDescription>
-              Choose which leagues to match streams against. Streams will be matched to events in any selected league.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <LeaguePicker
-              selectedLeagues={Array.from(selectedLeagues)}
-              onSelectionChange={(leagues) => {
-                setSelectedLeagues(new Set(leagues))
-                setFormData(prev => ({ ...prev, leagues }))
-              }}
-              maxHeight="max-h-96"
-              maxBadges={10}
-            />
           </CardContent>
         </Card>
       )}
