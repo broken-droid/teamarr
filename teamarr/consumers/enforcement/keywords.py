@@ -276,16 +276,34 @@ class KeywordEnforcer:
                 if from_channel_id:
                     channel = self._channel_manager.get_channel(from_channel_id)
                     if channel and channel.streams:
-                        streams = [s.id for s in channel.streams if s.id != stream_id]
+                        # streams is tuple[int, ...] — filter out the moved stream
+                        streams = [s for s in channel.streams if s != stream_id]
+                        logger.info(
+                            "[STREAM_AUDIT] keyword move: removing stream %d "
+                            "from ch %d: %s → %s",
+                            stream_id,
+                            from_channel_id,
+                            list(channel.streams),
+                            streams,
+                        )
                         self._channel_manager.update_channel(from_channel_id, {"streams": streams})
 
                 # Add to target
                 if to_channel_id:
                     channel = self._channel_manager.get_channel(to_channel_id)
                     if channel:
-                        streams = [s.id for s in channel.streams] if channel.streams else []
+                        # streams is tuple[int, ...] of stream IDs
+                        streams = list(channel.streams) if channel.streams else []
                         if stream_id not in streams:
                             streams.append(stream_id)
+                            logger.info(
+                                "[STREAM_AUDIT] keyword move: adding stream %d "
+                                "to ch %d: %s → %s",
+                                stream_id,
+                                to_channel_id,
+                                list(channel.streams) if channel.streams else [],
+                                streams,
+                            )
                             self._channel_manager.update_channel(
                                 to_channel_id, {"streams": streams}
                             )

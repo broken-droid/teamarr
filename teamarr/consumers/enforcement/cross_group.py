@@ -315,6 +315,12 @@ class CrossGroupEnforcer:
                 ]
 
                 if new_streams != current_streams:
+                    logger.info(
+                        "[STREAM_AUDIT] cross_group: ch %s streams %s → %s",
+                        to_channel_id,
+                        current_streams,
+                        new_streams,
+                    )
                     self._channel_manager.update_channel(to_channel_id, {"streams": new_streams})
 
         except Exception as e:

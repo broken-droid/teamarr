@@ -207,6 +207,16 @@ class ChannelLifecycleService:
             return False
 
         try:
+            # DIAG: Log every stream list mutation for debugging stream loss
+            if "streams" in data:
+                logger.info(
+                    "[STREAM_AUDIT] update_channel(%d) ctx=%s streams=%s count=%d",
+                    channel_id,
+                    context,
+                    data["streams"],
+                    len(data["streams"]),
+                )
+
             result = self._channel_manager.update_channel(channel_id, data)
             if result and result.success:
                 return True
@@ -1064,6 +1074,15 @@ class ChannelLifecycleService:
                 # Sync with Dispatcharr - use ordered stream list to respect rules
                 if self._channel_manager:
                     ordered_streams = get_ordered_stream_ids(conn, existing.id)
+                    logger.info(
+                        "[STREAM_AUDIT] consolidate add: ch='%s' (db_id=%d, d_id=%s) "
+                        "added stream_id=%d, db_ordered=%s",
+                        existing.channel_name,
+                        existing.id,
+                        existing.dispatcharr_channel_id,
+                        stream_id,
+                        ordered_streams,
+                    )
                     with self._dispatcharr_lock:
                         api_ok = self._safe_update_channel(
                             existing.dispatcharr_channel_id,
@@ -1632,6 +1651,15 @@ class ChannelLifecycleService:
                     db_updates["dispatcharr_stream_id"] = stream_id
                     changes_made.append(f"streams: added {stream_id}")
                     self._stream_drift_fix_count += 1
+                    logger.info(
+                        "[STREAM_AUDIT] sync_settings drift fix: ch='%s' (d_id=%s) "
+                        "stream_id=%d not in cached_streams=%s → setting to %s",
+                        existing.channel_name,
+                        existing.dispatcharr_channel_id,
+                        stream_id,
+                        current_stream_ids,
+                        new_streams,
+                    )
 
             # Note: Stream ordering is applied as a final step after all matching
             # See generation.py Step 3b - this ensures all streams from all groups

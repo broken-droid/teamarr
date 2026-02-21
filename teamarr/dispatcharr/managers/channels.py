@@ -312,6 +312,20 @@ class ChannelManager:
         if response.status_code == 200:
             channel_data = response.json()
             channel = DispatcharrChannel.from_api(channel_data)
+
+            # DIAG: If streams were in the request, verify the API response matches
+            if "streams" in data:
+                sent_streams = data["streams"]
+                got_streams = list(channel.streams)
+                if sorted(sent_streams) != sorted(got_streams):
+                    logger.warning(
+                        "[STREAM_AUDIT] API MISMATCH: ch %d sent streams=%s "
+                        "but API returned streams=%s",
+                        channel_id,
+                        sent_streams,
+                        got_streams,
+                    )
+
             with self._lock:
                 self._cache.update(channel)
             return OperationResult(

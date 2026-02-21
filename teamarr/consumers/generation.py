@@ -435,6 +435,12 @@ def run_full_generation(
             logger.warning("[RECONCILE] Failed: %s", e)
             result.reconciliation = {"error": str(e)}
 
+        # DIAG: Post-generation stream audit — compare DB vs Dispatcharr
+        try:
+            _run_stream_audit(db_factory, dispatcharr_client)
+        except Exception as e:
+            logger.warning("[STREAM_AUDIT] Post-generation audit failed: %s", e)
+
         # Cleanup (history, old runs, unused logos — part of step 7)
         update_progress("cleanup", 99, "Cleaning up history...")
         cleanup_results = _run_cleanup_tasks(db_factory, dispatcharr_client, update_progress)
@@ -722,6 +728,14 @@ def _apply_stream_ordering(
                     if channel_mgr and channel.dispatcharr_channel_id:
                         ordered_ids = get_ordered_stream_ids(conn, channel.id)
                         if ordered_ids:
+                            logger.info(
+                                "[STREAM_AUDIT] ordering: ch='%s' (d_id=%s) "
+                                "setting streams=%s count=%d",
+                                channel.channel_name,
+                                channel.dispatcharr_channel_id,
+                                ordered_ids,
+                                len(ordered_ids),
+                            )
                             sync_result = channel_mgr.update_channel(
                                 channel.dispatcharr_channel_id, {"streams": ordered_ids}
                             )
@@ -754,6 +768,79 @@ def _apply_stream_ordering(
         reorder_result["error"] = str(e)
 
     return reorder_result
+
+
+def _run_stream_audit(
+    db_factory: Callable[[], Any],
+    dispatcharr_client: Any | None,
+) -> None:
+    """Post-generation audit: compare DB stream counts vs Dispatcharr.
+
+    Logs any channels where the DB and Dispatcharr disagree on stream
+    assignments. This is diagnostic-only — no changes are made.
+    """
+    from teamarr.database.channels import get_all_managed_channels, get_channel_streams
+    from teamarr.dispatcharr.managers.channels import ChannelManager
+
+    if not dispatcharr_client:
+        return
+
+    channel_attr = getattr(dispatcharr_client, "channels", None)
+    raw_client = channel_attr._client if channel_attr else None
+    if not raw_client:
+        return
+
+    channel_mgr = ChannelManager(raw_client)
+    mismatches = []
+
+    with db_factory() as conn:
+        channels = get_all_managed_channels(conn, include_deleted=False)
+
+        for channel in channels:
+            if not channel.dispatcharr_channel_id:
+                continue
+
+            db_streams = get_channel_streams(conn, channel.id)
+            db_stream_ids = sorted(
+                s.dispatcharr_stream_id
+                for s in db_streams
+                if getattr(s, "dispatcharr_stream_id", None)
+            )
+
+            d_channel = channel_mgr.get_channel(channel.dispatcharr_channel_id)
+            if not d_channel:
+                logger.warning(
+                    "[STREAM_AUDIT] MISSING: ch='%s' (d_id=%s) exists in DB "
+                    "but not in Dispatcharr (db_streams=%s)",
+                    channel.channel_name,
+                    channel.dispatcharr_channel_id,
+                    db_stream_ids,
+                )
+                continue
+
+            d_stream_ids = sorted(d_channel.streams or ())
+
+            if db_stream_ids != d_stream_ids:
+                mismatches.append(channel.channel_name)
+                logger.warning(
+                    "[STREAM_AUDIT] MISMATCH: ch='%s' (d_id=%s) "
+                    "db_streams=%s (%d) vs dispatcharr_streams=%s (%d)",
+                    channel.channel_name,
+                    channel.dispatcharr_channel_id,
+                    db_stream_ids,
+                    len(db_stream_ids),
+                    d_stream_ids,
+                    len(d_stream_ids),
+                )
+
+    if mismatches:
+        logger.warning(
+            "[STREAM_AUDIT] %d channel(s) have stream mismatches: %s",
+            len(mismatches),
+            mismatches[:20],  # Cap at 20 to avoid log spam
+        )
+    else:
+        logger.info("[STREAM_AUDIT] All channels match between DB and Dispatcharr")
 
 
 def _run_cleanup_tasks(
