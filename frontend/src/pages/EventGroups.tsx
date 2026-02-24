@@ -17,8 +17,6 @@ import {
   ArrowUpDown,
   RotateCcw,
   Library,
-  Crown,
-  Layers,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -53,17 +51,14 @@ import {
   useToggleGroup,
   usePreviewGroup,
   useReorderGroups,
-  usePromoteGroup,
 } from "@/hooks/useGroups"
-import { useTemplates } from "@/hooks/useTemplates"
 import type { EventGroup, PreviewGroupResponse } from "@/api/types"
-import { getLeagues, searchTeams } from "@/api/teams"
-import { LeaguePicker } from "@/components/LeaguePicker"
+import { getLeagues } from "@/api/teams"
 import { ChannelProfileSelector } from "@/components/ChannelProfileSelector"
 import { StreamProfileSelector } from "@/components/StreamProfileSelector"
 import { StreamTimezoneSelector } from "@/components/StreamTimezoneSelector"
-import { TemplateAssignmentModal } from "@/components/TemplateAssignmentModal"
-import { getLeagueDisplayName, SPORT_EMOJIS } from "@/lib/utils"
+import { SubscribedSports } from "@/components/SubscribedSports"
+import { getLeagueDisplayName } from "@/lib/utils"
 
 // Fetch Dispatcharr channel groups for name lookup
 async function fetchChannelGroups(): Promise<{ id: number; name: string }[]> {
@@ -76,99 +71,9 @@ async function fetchChannelGroups(): Promise<{ id: number; name: string }[]> {
 // Helper to get display name (prefer display_name over name)
 const getDisplayName = (group: EventGroup) => group.display_name || group.name
 
-// Team search component for bulk edit soccer teams mode
-interface BulkTeamSearchProps {
-  selectedTeams: Array<{ provider: string; team_id: string; name: string }>
-  onTeamsChange: (teams: Array<{ provider: string; team_id: string; name: string }>) => void
-  searchQuery: string
-  onSearchChange: (query: string) => void
-}
-
-function BulkTeamSearch({ selectedTeams, onTeamsChange, searchQuery, onSearchChange }: BulkTeamSearchProps) {
-  const { data: searchResults, isLoading } = useQuery({
-    queryKey: ["soccer-team-search-bulk", searchQuery],
-    queryFn: () => searchTeams(searchQuery, undefined, "soccer"),
-    enabled: searchQuery.length >= 2,
-    staleTime: 30 * 1000,
-  })
-
-  const filteredResults = useMemo(() => {
-    if (!searchResults?.teams) return []
-    return searchResults.teams.filter(
-      team => !selectedTeams.some(s => s.team_id === team.team_id && s.provider === team.provider)
-    )
-  }, [searchResults, selectedTeams])
-
-  const handleSelect = (team: { provider: string; team_id: string; name: string }) => {
-    onTeamsChange([...selectedTeams, team])
-    onSearchChange('')
-  }
-
-  const handleRemove = (teamId: string, provider: string) => {
-    onTeamsChange(selectedTeams.filter(t => !(t.team_id === teamId && t.provider === provider)))
-  }
-
-  return (
-    <div className="space-y-2">
-      {selectedTeams.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {selectedTeams.map((team) => (
-            <Badge key={`${team.provider}-${team.team_id}`} variant="secondary" className="gap-1">
-              {team.name}
-              <button
-                type="button"
-                onClick={() => handleRemove(team.team_id, team.provider)}
-                className="hover:text-destructive"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          ))}
-        </div>
-      )}
-      <div className="relative">
-        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search soccer teams..."
-          value={searchQuery}
-          onChange={(e) => onSearchChange(e.target.value)}
-          className="pl-8 h-8 text-sm"
-        />
-        {isLoading && (
-          <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
-        )}
-      </div>
-      {searchQuery.length >= 2 && (
-        <div className="border rounded max-h-40 overflow-y-auto">
-          {isLoading ? (
-            <div className="p-2 text-center text-xs text-muted-foreground">Searching...</div>
-          ) : filteredResults.length > 0 ? (
-            <div className="divide-y">
-              {filteredResults.slice(0, 10).map((team) => (
-                <button
-                  key={`${team.provider}-${team.team_id}`}
-                  type="button"
-                  onClick={() => handleSelect({ provider: team.provider, team_id: team.team_id, name: team.name })}
-                  className="w-full text-left px-2 py-1.5 hover:bg-muted/50 text-sm"
-                >
-                  <div className="font-medium">{team.name}</div>
-                  <div className="text-xs text-muted-foreground">{team.league.toUpperCase()}</div>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="p-2 text-center text-xs text-muted-foreground">No teams found</div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
 export function EventGroups() {
   const navigate = useNavigate()
   const { data, isLoading, error, refetch } = useGroups(true)
-  const { data: templates } = useTemplates()
   const { data: leaguesResponse } = useQuery({ queryKey: ["leagues"], queryFn: () => getLeagues() })
   const cachedLeagues = leaguesResponse?.leagues
   const { data: channelGroups } = useQuery({ queryKey: ["dispatcharr-channel-groups"], queryFn: fetchChannelGroups })
@@ -179,7 +84,6 @@ export function EventGroups() {
   const reorderMutation = useReorderGroups()
   const clearCacheMutation = useClearGroupMatchCache()
   const clearCachesBulkMutation = useClearGroupsMatchCache()
-  const promoteMutation = usePromoteGroup()
 
   // Drag-and-drop state for AUTO groups
   const [draggedGroupId, setDraggedGroupId] = useState<number | null>(null)
@@ -192,23 +96,6 @@ export function EventGroups() {
   const [clearCacheConfirm, setClearCacheConfirm] = useState<EventGroup | null>(null)
   const [showBulkClearCache, setShowBulkClearCache] = useState(false)
 
-  // Create league lookup maps (logo and sport)
-  const { leagueLogos, leagueSports } = useMemo(() => {
-    const logos: Record<string, string> = {}
-    const sports: Record<string, string> = {}
-    if (cachedLeagues) {
-      for (const league of cachedLeagues) {
-        if (league.logo_url) {
-          logos[league.slug] = league.logo_url
-        }
-        if (league.sport) {
-          sports[league.slug] = league.sport.toLowerCase()
-        }
-      }
-    }
-    return { leagueLogos: logos, leagueSports: sports }
-  }, [cachedLeagues])
-
   // Create channel group ID to name lookup
   const channelGroupNames = useMemo(() => {
     const names: Record<number, string> = {}
@@ -220,36 +107,17 @@ export function EventGroups() {
     return names
   }, [channelGroups])
 
-  // Get sport(s) for a group based on its leagues
-  const getGroupSports = (group: EventGroup): string[] => {
-    const sports = new Set<string>()
-    for (const league of group.leagues) {
-      const sport = leagueSports[league]
-      if (sport) sports.add(sport)
-    }
-    return [...sports].sort()
-  }
-
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
 
   // Filter state
   const [nameFilter, setNameFilter] = useState("")
-  const [leagueFilter, setLeagueFilter] = useState("")
-  const [sportFilter, setSportFilter] = useState("")
-  const [templateFilter, setTemplateFilter] = useState<number | "">("")
   const [statusFilter, setStatusFilter] = useState<"" | "enabled" | "disabled">("")
 
   const [deleteConfirm, setDeleteConfirm] = useState<EventGroup | null>(null)
-  const [promoteConfirm, setPromoteConfirm] = useState<EventGroup | null>(null)
   const [showBulkDelete, setShowBulkDelete] = useState(false)
   const [showBulkEdit, setShowBulkEdit] = useState(false)
   // Bulk edit form state - checkboxes control which fields to update
-  const [bulkEditLeaguesEnabled, setBulkEditLeaguesEnabled] = useState(false)
-  const [bulkEditLeagues, setBulkEditLeagues] = useState<string[]>([])
-  const [bulkEditTemplateEnabled, setBulkEditTemplateEnabled] = useState(false)
-  const [bulkEditTemplateId, setBulkEditTemplateId] = useState<number | null>(null)
-  const [bulkEditClearTemplate, setBulkEditClearTemplate] = useState(false)
   const [bulkEditChannelGroupEnabled, setBulkEditChannelGroupEnabled] = useState(false)
   const [bulkEditChannelGroupId, setBulkEditChannelGroupId] = useState<number | null>(null)
   const [bulkEditChannelGroupMode, setBulkEditChannelGroupMode] = useState<'static' | 'sport' | 'league'>('static')
@@ -267,18 +135,8 @@ export function EventGroups() {
   const [bulkEditSortOrder, setBulkEditSortOrder] = useState<string>("time")
   const [bulkEditOverlapHandlingEnabled, setBulkEditOverlapHandlingEnabled] = useState(false)
   const [bulkEditOverlapHandling, setBulkEditOverlapHandling] = useState<string>("add_stream")
-  const [bulkEditSoccerModeEnabled, setBulkEditSoccerModeEnabled] = useState(false)
-  const [bulkEditSoccerMode, setBulkEditSoccerMode] = useState<'all' | 'teams' | 'manual' | 'clear'>('all')
-  const [bulkEditSoccerTeams, setBulkEditSoccerTeams] = useState<Array<{ provider: string; team_id: string; name: string }>>([])
-  const [bulkEditTeamSearch, setBulkEditTeamSearch] = useState('')
-
-  // Template assignment modal for bulk/single selection
-  const [showTemplateAssignment, setShowTemplateAssignment] = useState(false)
-  const [templateAssignmentGroupId, setTemplateAssignmentGroupId] = useState<number | undefined>(undefined)
-  const [templateAssignmentBulkIds, setTemplateAssignmentBulkIds] = useState<number[] | undefined>(undefined)
-
   // Column sorting state
-  type SortColumn = "name" | "sport" | "template" | "matched" | "status" | null
+  type SortColumn = "name" | "matched" | "status" | null
   type SortDirection = "asc" | "desc"
   const [sortColumn, setSortColumn] = useState<SortColumn>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc")
@@ -303,105 +161,33 @@ export function EventGroups() {
     )
   }
 
-  // Get unique leagues and sports from groups for filter dropdowns
-  const { uniqueLeagues, uniqueSports } = useMemo(() => {
-    if (!data?.groups) return { uniqueLeagues: [], uniqueSports: [] }
-    const leagues = new Set<string>()
-    const sports = new Set<string>()
-    data.groups.forEach((g) => {
-      g.leagues.forEach((l) => {
-        leagues.add(l)
-        const sport = leagueSports[l]
-        if (sport) sports.add(sport)
-      })
-    })
-    return {
-      uniqueLeagues: [...leagues].sort(),
-      uniqueSports: [...sports].sort(),
-    }
-  }, [data?.groups, leagueSports])
+  // Filter groups, separating AUTO and MANUAL
+  const { autoGroups, manualGroups, filteredGroups } = useMemo(() => {
+    if (!data?.groups) return { autoGroups: [], manualGroups: [], filteredGroups: [] }
 
-  // Filter groups and organize parent/child, separating AUTO and MANUAL
-  const { parentGroups, autoGroups, manualGroups, filteredGroups, childrenMap } = useMemo(() => {
-    if (!data?.groups) return { parentGroups: [], autoGroups: [], manualGroups: [], filteredGroups: [], childrenMap: {} as Record<number, EventGroup[]> }
-
-    // Separate parent and child groups
-    const parents: EventGroup[] = []
-    const childrenMap: Record<number, EventGroup[]> = {}
-
-    for (const group of data.groups) {
-      if (typeof group.parent_group_id === 'number') {
-        if (!childrenMap[group.parent_group_id]) {
-          childrenMap[group.parent_group_id] = []
-        }
-        childrenMap[group.parent_group_id].push(group)
-      } else {
-        parents.push(group)
-      }
-    }
-
-    // Filter parents
-    const filteredParents = parents.filter((group) => {
+    // Filter groups
+    const filtered = data.groups.filter((group) => {
       if (nameFilter && !group.name.toLowerCase().includes(nameFilter.toLowerCase())) return false
-      if (leagueFilter && !group.leagues.includes(leagueFilter)) return false
-      if (sportFilter) {
-        const groupSports = group.leagues.map(l => leagueSports[l]).filter(Boolean)
-        if (!groupSports.includes(sportFilter)) return false
-      }
-      if (templateFilter !== "") {
-        if (templateFilter === 0) {
-          // "Unassigned" - match groups with no template_id AND no group_templates
-          if (group.template_id !== null || group.group_template_count > 0) return false
-        } else {
-          if (group.template_id !== templateFilter) return false
-        }
-      }
       if (statusFilter === "enabled" && !group.enabled) return false
       if (statusFilter === "disabled" && group.enabled) return false
       return true
     })
 
     // Separate AUTO and MANUAL groups, sort AUTO by sort_order
-    const auto = filteredParents
+    const auto = filtered
       .filter((g) => g.channel_assignment_mode === "auto")
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-    const manual = filteredParents.filter((g) => g.channel_assignment_mode !== "auto")
+    const manual = filtered.filter((g) => g.channel_assignment_mode !== "auto")
 
-    // Build flat list: AUTO groups first (with children), then MANUAL groups (with children)
-    const flat: EventGroup[] = []
-
-    // Add AUTO groups with their children
-    for (const parent of auto) {
-      flat.push(parent)
-      const children = childrenMap[parent.id] || []
-      const filteredChildren = children.filter((group) => {
-        if (statusFilter === "enabled" && !group.enabled) return false
-        if (statusFilter === "disabled" && group.enabled) return false
-        return true
-      })
-      flat.push(...filteredChildren)
-    }
-
-    // Add MANUAL groups with their children
-    for (const parent of manual) {
-      flat.push(parent)
-      const children = childrenMap[parent.id] || []
-      const filteredChildren = children.filter((group) => {
-        if (statusFilter === "enabled" && !group.enabled) return false
-        if (statusFilter === "disabled" && group.enabled) return false
-        return true
-      })
-      flat.push(...filteredChildren)
-    }
+    // Build flat list: AUTO groups first, then MANUAL groups
+    const flat: EventGroup[] = [...auto, ...manual]
 
     return {
-      parentGroups: filteredParents,
       autoGroups: auto,
       manualGroups: manual,
       filteredGroups: flat,
-      childrenMap,
     }
-  }, [data?.groups, nameFilter, leagueFilter, sportFilter, templateFilter, statusFilter, leagueSports])
+  }, [data?.groups, nameFilter, statusFilter])
 
   // Apply sorting to MANUAL groups only (AUTO groups use drag-and-drop order)
   const sortedGroups = useMemo(() => {
@@ -414,18 +200,6 @@ export function EventGroups() {
         case "name":
           cmp = getDisplayName(a).localeCompare(getDisplayName(b))
           break
-        case "sport": {
-          const sportsA = a.leagues.map(l => leagueSports[l]).filter(Boolean).sort().join(",")
-          const sportsB = b.leagues.map(l => leagueSports[l]).filter(Boolean).sort().join(",")
-          cmp = sportsA.localeCompare(sportsB)
-          break
-        }
-        case "template": {
-          const tA = a.template_id ? templates?.find(t => t.id === a.template_id)?.name || "" : ""
-          const tB = b.template_id ? templates?.find(t => t.id === b.template_id)?.name || "" : ""
-          cmp = tA.localeCompare(tB)
-          break
-        }
         case "matched":
           cmp = (a.matched_count || 0) - (b.matched_count || 0)
           break
@@ -440,29 +214,10 @@ export function EventGroups() {
     const sortedManual = [...manualGroups].sort(sortFn)
 
     // Rebuild flat list: AUTO groups first (unsorted), then sorted MANUAL groups
-    const result: EventGroup[] = []
-
-    // AUTO groups with children (keep original order)
-    for (const parent of autoGroups) {
-      result.push(parent)
-      const children = childrenMap?.[parent.id] || []
-      result.push(...children)
-    }
-
-    // MANUAL groups with children (sorted)
-    for (const parent of sortedManual) {
-      result.push(parent)
-      const children = childrenMap?.[parent.id] || []
-      result.push(...children)
-    }
+    const result: EventGroup[] = [...autoGroups, ...sortedManual]
 
     return result.length > 0 ? result : filteredGroups
-  }, [filteredGroups, autoGroups, manualGroups, childrenMap, sortColumn, sortDirection, leagueSports, templates])
-
-  // Filter templates to only show event templates
-  const eventTemplates = useMemo(() => {
-    return templates?.filter((t) => t.template_type === "event") ?? []
-  }, [templates])
+  }, [filteredGroups, autoGroups, manualGroups, sortColumn, sortDirection])
 
   // Calculate rich stats like V1
   const stats = useMemo(() => {
@@ -648,27 +403,8 @@ export function EventGroups() {
   }
 
   // Check if selection has mixed group_modes (single vs multi)
-  const hasMixedModes = useMemo(() => {
-    if (!data?.groups || selectedIds.size === 0) return false
-    const selectedGroups = data.groups.filter(g => selectedIds.has(g.id))
-    const modes = new Set(selectedGroups.map(g => g.group_mode))
-    return modes.size > 1
-  }, [data?.groups, selectedIds])
-
-  // Check if all selected groups are multi-league (for template assignment vs single template)
-  const allMultiMode = useMemo(() => {
-    if (!data?.groups || selectedIds.size === 0) return false
-    const selectedGroups = data.groups.filter(g => selectedIds.has(g.id))
-    return selectedGroups.every(g => g.group_mode === 'multi')
-  }, [data?.groups, selectedIds])
-
   // Reset bulk edit form state
   const resetBulkEditForm = () => {
-    setBulkEditLeaguesEnabled(false)
-    setBulkEditLeagues([])
-    setBulkEditTemplateEnabled(false)
-    setBulkEditTemplateId(null)
-    setBulkEditClearTemplate(false)
     setBulkEditChannelGroupEnabled(false)
     setBulkEditChannelGroupId(null)
     setBulkEditChannelGroupMode('static')
@@ -683,10 +419,6 @@ export function EventGroups() {
     setBulkEditSortOrder("time")
     setBulkEditOverlapHandlingEnabled(false)
     setBulkEditOverlapHandling("add_stream")
-    setBulkEditSoccerModeEnabled(false)
-    setBulkEditSoccerMode('all')
-    setBulkEditSoccerTeams([])
-    setBulkEditTeamSearch('')
   }
 
   const handleBulkEdit = async () => {
@@ -695,8 +427,6 @@ export function EventGroups() {
     // Build request with only enabled fields
     const request: {
       group_ids: number[]
-      leagues?: string[]
-      template_id?: number | null
       channel_group_id?: number | null
       channel_group_mode?: 'static' | 'sport' | 'league'
       channel_profile_ids?: (number | string)[]
@@ -704,27 +434,12 @@ export function EventGroups() {
       stream_timezone?: string | null
       channel_sort_order?: string
       overlap_handling?: string
-      clear_template?: boolean
       clear_channel_group_id?: boolean
       clear_channel_profile_ids?: boolean
       clear_stream_profile_id?: boolean
       clear_stream_timezone?: boolean
-      soccer_mode?: string | null
-      soccer_followed_teams?: Array<{ provider: string; team_id: string; name: string }>
-      clear_soccer_mode?: boolean
-      clear_soccer_followed_teams?: boolean
     } = { group_ids: ids }
 
-    if (bulkEditLeaguesEnabled && bulkEditLeagues.length > 0) {
-      request.leagues = bulkEditLeagues
-    }
-    if (bulkEditTemplateEnabled) {
-      if (bulkEditClearTemplate) {
-        request.clear_template = true
-      } else if (bulkEditTemplateId) {
-        request.template_id = bulkEditTemplateId
-      }
-    }
     if (bulkEditChannelGroupEnabled) {
       if (bulkEditClearChannelGroup) {
         request.clear_channel_group_id = true
@@ -768,20 +483,6 @@ export function EventGroups() {
     if (bulkEditOverlapHandlingEnabled) {
       request.overlap_handling = bulkEditOverlapHandling
     }
-    if (bulkEditSoccerModeEnabled) {
-      if (bulkEditSoccerMode === 'clear') {
-        request.clear_soccer_mode = true
-        request.clear_soccer_followed_teams = true
-      } else {
-        request.soccer_mode = bulkEditSoccerMode
-        if (bulkEditSoccerMode === 'teams' && bulkEditSoccerTeams.length > 0) {
-          request.soccer_followed_teams = bulkEditSoccerTeams
-        } else if (bulkEditSoccerMode !== 'teams') {
-          // Clear teams when switching away from teams mode
-          request.clear_soccer_followed_teams = true
-        }
-      }
-    }
 
     try {
       const result = await bulkUpdateMutation.mutateAsync(request)
@@ -800,13 +501,10 @@ export function EventGroups() {
 
   const clearFilters = () => {
     setNameFilter("")
-    setLeagueFilter("")
-    setSportFilter("")
-    setTemplateFilter("")
     setStatusFilter("")
   }
 
-  const hasActiveFilters = nameFilter || leagueFilter || sportFilter || templateFilter !== "" || statusFilter !== ""
+  const hasActiveFilters = nameFilter || statusFilter !== ""
 
   // Drag-and-drop handlers for AUTO groups
   const handleDragStart = (e: React.DragEvent, groupId: number) => {
@@ -896,6 +594,9 @@ export function EventGroups() {
           </Button>
         </div>
       </div>
+
+      {/* Subscribed Sports — global league/soccer/template management */}
+      <SubscribedSports />
 
       {/* Stats Tiles - V1 Style: Grid with 4 equal columns filling width */}
       {data?.groups && data.groups.length > 0 && (
@@ -1060,45 +761,6 @@ export function EventGroups() {
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    const ids = Array.from(selectedIds)
-                    if (ids.length === 1) {
-                      // Single group — open in database mode
-                      const group = data?.groups?.find(g => g.id === ids[0])
-                      if (group && group.group_mode === 'multi') {
-                        setTemplateAssignmentBulkIds(undefined)
-                        setTemplateAssignmentGroupId(ids[0])
-                        setShowTemplateAssignment(true)
-                      }
-                    } else if (ids.length > 1) {
-                      // Multiple groups — open in bulk mode
-                      setTemplateAssignmentGroupId(undefined)
-                      setTemplateAssignmentBulkIds(ids)
-                      setShowTemplateAssignment(true)
-                    }
-                  }}
-                  disabled={(() => {
-                    // Only enable for multi-league groups
-                    if (!data?.groups) return true
-                    const selectedGroups = data.groups.filter(g => selectedIds.has(g.id))
-                    // Enable only if all selected groups are multi-league
-                    return selectedGroups.length === 0 || selectedGroups.some(g => g.group_mode !== 'multi')
-                  })()}
-                  title={(() => {
-                    if (!data?.groups) return "Loading..."
-                    const selectedGroups = data.groups.filter(g => selectedIds.has(g.id))
-                    if (selectedGroups.some(g => g.group_mode !== 'multi')) {
-                      return "Template assignments only available for multi-league groups"
-                    }
-                    return selectedIds.size === 1 ? "Manage template assignments" : "Manage templates for first selected group"
-                  })()}
-                >
-                  <Layers className="h-3 w-3 mr-1" />
-                  Templates
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
                     if (selectedIds.size === 1) {
                       const groupId = Array.from(selectedIds)[0]
                       navigate(`/event-groups/${groupId}`)
@@ -1106,8 +768,7 @@ export function EventGroups() {
                       setShowBulkEdit(true)
                     }
                   }}
-                  disabled={hasMixedModes}
-                  title={hasMixedModes ? "Cannot edit groups with different modes (single/multi)" : selectedIds.size === 1 ? "Edit group" : "Edit selected groups"}
+                  title={selectedIds.size === 1 ? "Edit group" : "Edit selected groups"}
                 >
                   <Pencil className="h-3 w-3 mr-1" />
                   Edit
@@ -1144,28 +805,11 @@ export function EventGroups() {
                     />
                   </TableHead>
                   <TableHead
-                    className="w-[30%] cursor-pointer hover:bg-muted/50"
+                    className="cursor-pointer hover:bg-muted/50"
                     onClick={() => handleSort("name")}
                   >
                     <div className="flex items-center">
                       Name <SortIcon column="name" />
-                    </div>
-                  </TableHead>
-                  <TableHead className="w-20 text-center">League</TableHead>
-                  <TableHead
-                    className="w-12 text-center cursor-pointer hover:bg-muted/50"
-                    onClick={() => handleSort("sport")}
-                  >
-                    <div className="flex items-center justify-center">
-                      Sport <SortIcon column="sport" />
-                    </div>
-                  </TableHead>
-                  <TableHead
-                    className="w-20 cursor-pointer hover:bg-muted/50"
-                    onClick={() => handleSort("template")}
-                  >
-                    <div className="flex items-center">
-                      Template <SortIcon column="template" />
                     </div>
                   </TableHead>
                   <TableHead className="text-center w-16">Ch Start</TableHead>
@@ -1188,7 +832,7 @@ export function EventGroups() {
                   </TableHead>
                   <TableHead className="w-28 text-right">Actions</TableHead>
                 </TableRow>
-                {/* Filter row - styled like V1 */}
+                {/* Filter row */}
                 <TableRow className="border-b-2 border-border">
                   <TableHead className="py-0.5 pb-1.5"></TableHead>
                   <TableHead className="py-0.5 pb-1.5"></TableHead>
@@ -1210,46 +854,6 @@ export function EventGroups() {
                         </button>
                       )}
                     </div>
-                  </TableHead>
-                  <TableHead className="py-0.5 pb-1.5">
-                    <FilterSelect
-                      value={leagueFilter}
-                      onChange={setLeagueFilter}
-                      options={[
-                        { value: "", label: "All" },
-                        ...uniqueLeagues.map((league) => ({
-                          value: league,
-                          label: league.toUpperCase(),
-                        })),
-                      ]}
-                    />
-                  </TableHead>
-                  <TableHead className="py-0.5 pb-1.5">
-                    <FilterSelect
-                      value={sportFilter}
-                      onChange={setSportFilter}
-                      options={[
-                        { value: "", label: "All" },
-                        ...uniqueSports.map((sport) => ({
-                          value: sport,
-                          label: sport.charAt(0).toUpperCase() + sport.slice(1),
-                        })),
-                      ]}
-                    />
-                  </TableHead>
-                  <TableHead className="py-0.5 pb-1.5">
-                    <FilterSelect
-                      value={templateFilter === "" ? "" : String(templateFilter)}
-                      onChange={(v) => setTemplateFilter(v ? Number(v) : "")}
-                      options={[
-                        { value: "", label: "All" },
-                        { value: "0", label: "Unassigned" },
-                        ...(templates?.filter(t => t.template_type === "event").map((template) => ({
-                          value: String(template.id),
-                          label: template.name,
-                        })) || []),
-                      ]}
-                    />
                   </TableHead>
                   <TableHead className="py-0.5 pb-1.5"></TableHead>
                   <TableHead className="py-0.5 pb-1.5"></TableHead>
@@ -1277,7 +881,7 @@ export function EventGroups() {
               <TableBody>
                 {sortedGroups.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       No groups match the current filters.
                     </TableCell>
                   </TableRow>
@@ -1286,7 +890,7 @@ export function EventGroups() {
                 {/* AUTO Section Header - V1 style */}
                 {autoGroups.length > 0 && (
                   <TableRow className="bg-secondary/50 hover:bg-secondary/50 border-b-2 border-emerald-500/40">
-                    <TableCell colSpan={11} className="py-2 px-4">
+                    <TableCell colSpan={8} className="py-2 px-4">
                       <span className="text-xs font-semibold text-emerald-500 uppercase tracking-wide">
                         AUTO Channel Assignment
                       </span>
@@ -1297,23 +901,18 @@ export function EventGroups() {
                   </TableRow>
                 )}
                 {sortedGroups.map((group, index) => {
-                  const isChild = typeof group.parent_group_id === 'number'
-                  const parentGroup = isChild
-                    ? parentGroups.find((p) => p.id === group.parent_group_id)
-                    : null
                   const isAuto = group.channel_assignment_mode === "auto"
-                  const isManual = !isAuto && !isChild
 
                   // Insert MANUAL section header before first manual group
-                  const isFirstManual = isManual && !sortedGroups.slice(0, index).some(
-                    (g) => g.channel_assignment_mode !== "auto" && typeof g.parent_group_id !== 'number'
+                  const isFirstManual = !isAuto && !sortedGroups.slice(0, index).some(
+                    (g) => g.channel_assignment_mode !== "auto"
                   )
 
                   return (
                     <React.Fragment key={group.id}>
                       {isFirstManual && manualGroups.length > 0 && (
                         <TableRow className="bg-secondary/50 hover:bg-secondary/50 border-b-2 border-border">
-                          <TableCell colSpan={11} className="py-2 px-4">
+                          <TableCell colSpan={8} className="py-2 px-4">
                             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                               MANUAL Channel Assignment
                             </span>
@@ -1325,18 +924,17 @@ export function EventGroups() {
                       )}
                       <TableRow
                         className={`
-                          ${isChild ? "bg-purple-500/5 hover:bg-purple-500/10" : ""}
-                          ${isAuto && !isChild ? "border-l-3 border-l-transparent hover:border-l-emerald-500 group/row" : ""}
+                          ${isAuto ? "border-l-3 border-l-transparent hover:border-l-emerald-500 group/row" : ""}
                           ${draggedGroupId === group.id ? "opacity-50" : ""}
                         `}
-                        draggable={isAuto && !isChild}
-                        onDragStart={(e) => isAuto && !isChild && handleDragStart(e, group.id)}
+                        draggable={isAuto}
+                        onDragStart={(e) => isAuto && handleDragStart(e, group.id)}
                         onDragOver={handleDragOver}
-                        onDrop={(e) => isAuto && !isChild && handleDrop(e, group.id)}
+                        onDrop={(e) => isAuto && handleDrop(e, group.id)}
                         onDragEnd={handleDragEnd}
                       >
                         <TableCell className="w-8 p-0">
-                          {isAuto && !isChild ? (
+                          {isAuto ? (
                             <div className="flex items-center justify-center h-full cursor-grab active:cursor-grabbing text-muted-foreground group-hover/row:text-emerald-500">
                               <GripVertical className="h-4 w-4" />
                             </div>
@@ -1349,163 +947,53 @@ export function EventGroups() {
                           />
                         </TableCell>
                         <TableCell className="font-medium">
-                          {isChild ? (
-                            <div className="flex items-center gap-2 pl-4">
-                              <span className="text-purple-400 font-bold">└</span>
-                              <span>{getDisplayName(group)}</span>
-                              {/* Account/Provider badge for child */}
-                              {group.m3u_account_name && (
-                                <Badge
-                                  variant="secondary"
-                                  className="text-xs"
-                                  title={`M3U Account: ${group.m3u_account_name}`}
-                                >
-                                  {group.m3u_account_name}
-                                </Badge>
-                              )}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span>{getDisplayName(group)}</span>
+                            {/* AUTO badge */}
+                            {isAuto && (
                               <Badge
-                                variant="outline"
-                                className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-xs italic"
-                                title={`Child of: ${parentGroup ? getDisplayName(parentGroup) : 'parent'}`}
+                                variant="secondary"
+                                className="bg-green-500/15 text-green-500 border-green-500/30 text-xs"
+                                title="Auto channel assignment"
                               >
-                                ↳ {parentGroup ? ((() => {
-                                  const name = getDisplayName(parentGroup)
-                                  const chars = [...name] // Properly handles Unicode/emojis
-                                  return chars.length > 15 ? chars.slice(0, 15).join("") + "…" : name
-                                })()) : "parent"}
+                                AUTO
                               </Badge>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span>{getDisplayName(group)}</span>
-                              {/* AUTO badge */}
-                              {isAuto && (
-                                <Badge
-                                  variant="secondary"
-                                  className="bg-green-500/15 text-green-500 border-green-500/30 text-xs"
-                                  title="Auto channel assignment"
-                                >
-                                  AUTO
-                                </Badge>
-                              )}
-                              {/* Account name badge */}
-                              {group.m3u_account_name && (
-                                <Badge
-                                  variant="secondary"
-                                  className="text-xs"
-                                  title={`M3U Account: ${group.m3u_account_name}`}
-                                >
-                                  {group.m3u_account_name}
-                                </Badge>
-                              )}
-                              {/* Regex badge */}
-                              {(group.custom_regex_teams_enabled ||
-                                group.custom_regex_date_enabled ||
-                                group.custom_regex_time_enabled ||
-                                group.stream_include_regex_enabled ||
-                                group.stream_exclude_regex_enabled) && (
-                                <Badge
-                                  variant="secondary"
-                                  className="bg-blue-500/15 text-blue-400 border-blue-500/30 text-xs"
-                                  title={`Custom regex: ${[
-                                    group.custom_regex_teams_enabled && "teams",
-                                    group.custom_regex_date_enabled && "date",
-                                    group.custom_regex_time_enabled && "time",
-                                    group.stream_include_regex_enabled && "include",
-                                    group.stream_exclude_regex_enabled && "exclude",
-                                  ].filter(Boolean).join(", ")}`}
-                                >
-                                  Regex
-                                </Badge>
-                              )}
-                            </div>
-                          )}
-                        </TableCell>
-                        {/* League Column */}
-                        <TableCell className="text-center">
-                          <div className="flex flex-wrap gap-1 justify-center">
-                            {group.leagues.slice(0, 2).map((league) => (
-                              leagueLogos[league] ? (
-                                <img
-                                  key={league}
-                                  src={leagueLogos[league]}
-                                  alt={league.toUpperCase()}
-                                  title={league.toUpperCase()}
-                                  className="h-6 w-auto object-contain"
-                                />
-                              ) : (
-                                <Badge key={league} variant="secondary" className="text-[0.7rem] px-1.5">
-                                  {league.toUpperCase()}
-                                </Badge>
-                              )
-                            ))}
-                            {group.leagues.length > 2 && (
-                              <Badge variant="outline" className="text-[0.7rem]">
-                                +{group.leagues.length - 2}
+                            )}
+                            {/* Account name badge */}
+                            {group.m3u_account_name && (
+                              <Badge
+                                variant="secondary"
+                                className="text-xs"
+                                title={`M3U Account: ${group.m3u_account_name}`}
+                              >
+                                {group.m3u_account_name}
+                              </Badge>
+                            )}
+                            {/* Regex badge */}
+                            {(group.custom_regex_teams_enabled ||
+                              group.custom_regex_date_enabled ||
+                              group.custom_regex_time_enabled ||
+                              group.stream_include_regex_enabled ||
+                              group.stream_exclude_regex_enabled) && (
+                              <Badge
+                                variant="secondary"
+                                className="bg-blue-500/15 text-blue-400 border-blue-500/30 text-xs"
+                                title={`Custom regex: ${[
+                                  group.custom_regex_teams_enabled && "teams",
+                                  group.custom_regex_date_enabled && "date",
+                                  group.custom_regex_time_enabled && "time",
+                                  group.stream_include_regex_enabled && "include",
+                                  group.stream_exclude_regex_enabled && "exclude",
+                                ].filter(Boolean).join(", ")}`}
+                              >
+                                Regex
                               </Badge>
                             )}
                           </div>
                         </TableCell>
-                        {/* Sport Column */}
-                        <TableCell className="text-center">
-                          {(() => {
-                            const sports = getGroupSports(group)
-                            if (sports.length === 0) {
-                              return <span className="text-muted-foreground">—</span>
-                            } else if (sports.length === 1) {
-                              const emoji = SPORT_EMOJIS[sports[0]] || "🏆"
-                              return (
-                                <span title={sports[0].charAt(0).toUpperCase() + sports[0].slice(1)}>
-                                  {emoji}
-                                </span>
-                              )
-                            } else {
-                              return (
-                                <Badge
-                                  variant="outline"
-                                  className="text-xs"
-                                  title={sports.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(", ")}
-                                >
-                                  MUL
-                                </Badge>
-                              )
-                            }
-                          })()}
-                        </TableCell>
-                    <TableCell>
-                      {isChild ? (
-                        <Badge
-                          variant="outline"
-                          className="bg-purple-500/15 text-purple-400 border-purple-500/30 text-xs italic"
-                          title="Inherited from parent"
-                        >
-                          ↳
-                        </Badge>
-                      ) : group.group_template_count > 0 ? (
-                        <Badge variant="success" title="Templates assigned via Manage Templates">
-                          Managed ({group.group_template_count})
-                        </Badge>
-                      ) : group.template_id ? (
-                        <Badge variant="success">
-                          {templates?.find((t) => t.id === group.template_id)?.name ?? `#${group.template_id}`}
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="italic text-muted-foreground">
-                          Unassigned
-                        </Badge>
-                      )}
-                    </TableCell>
                     {/* Ch Start Column */}
                     <TableCell className="text-center">
-                      {isChild ? (
-                        <Badge
-                          variant="outline"
-                          className="bg-purple-500/15 text-purple-400 border-purple-500/30 text-xs italic"
-                          title="Inherited from parent"
-                        >
-                          ↳
-                        </Badge>
-                      ) : isAuto ? (
+                      {isAuto ? (
                         <Badge
                           variant="secondary"
                           className="bg-green-500/15 text-green-500 border-green-500/30 text-xs"
@@ -1521,15 +1009,7 @@ export function EventGroups() {
                     </TableCell>
                     {/* Ch Group Column */}
                     <TableCell className="text-center">
-                      {isChild ? (
-                        <Badge
-                          variant="outline"
-                          className="bg-purple-500/15 text-purple-400 border-purple-500/30 text-xs italic"
-                          title="Inherited from parent"
-                        >
-                          ↳
-                        </Badge>
-                      ) : group.channel_group_mode && group.channel_group_mode !== "static" ? (
+                      {group.channel_group_mode && group.channel_group_mode !== "static" ? (
                         <Badge
                           variant="outline"
                           className="bg-blue-500/15 text-blue-400 border-blue-500/30 text-xs font-mono"
@@ -1608,17 +1088,6 @@ export function EventGroups() {
                             <RotateCcw className="h-4 w-4" />
                           )}
                         </Button>
-                        {isChild && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => setPromoteConfirm(group)}
-                            title="Promote to parent"
-                          >
-                            <Crown className="h-4 w-4 text-amber-500" />
-                          </Button>
-                        )}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -1677,72 +1146,6 @@ export function EventGroups() {
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               )}
               Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Promote to Parent Confirmation Dialog */}
-      <Dialog
-        open={promoteConfirm !== null}
-        onOpenChange={(open) => !open && setPromoteConfirm(null)}
-      >
-        <DialogContent onClose={() => setPromoteConfirm(null)}>
-          <DialogHeader>
-            <DialogTitle>Promote to Parent</DialogTitle>
-            <DialogDescription className="space-y-2">
-              <p>
-                Promote "{promoteConfirm ? getDisplayName(promoteConfirm) : ''}" to become the parent group?
-              </p>
-              {promoteConfirm && (() => {
-                const currentParent = parentGroups.find(p => p.id === promoteConfirm.parent_group_id)
-                const siblings = data?.groups.filter(g =>
-                  g.parent_group_id === promoteConfirm.parent_group_id && g.id !== promoteConfirm.id
-                ) || []
-                return (
-                  <div className="mt-2 p-2 bg-muted rounded text-sm">
-                    <p className="font-medium mb-1">This will reorganize the hierarchy:</p>
-                    <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                      {currentParent && (
-                        <li>"{getDisplayName(currentParent)}" will become a child</li>
-                      )}
-                      {siblings.map(s => (
-                        <li key={s.id}>"{getDisplayName(s)}" will become a child</li>
-                      ))}
-                      <li>"{getDisplayName(promoteConfirm)}" will become the parent</li>
-                    </ul>
-                    <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                      Channels will be reassigned on next EPG generation.
-                    </p>
-                  </div>
-                )
-              })()}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPromoteConfirm(null)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                if (promoteConfirm) {
-                  promoteMutation.mutate(promoteConfirm.id, {
-                    onSuccess: (result) => {
-                      toast.success(result.message)
-                      setPromoteConfirm(null)
-                    },
-                    onError: (error) => {
-                      toast.error(error instanceof Error ? error.message : "Failed to promote group")
-                    },
-                  })
-                }
-              }}
-              disabled={promoteMutation.isPending}
-            >
-              {promoteMutation.isPending && (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              )}
-              Promote
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1818,97 +1221,6 @@ export function EventGroups() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4 px-1 max-h-[60vh] overflow-y-auto">
-            {/* Leagues */}
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <Checkbox
-                  checked={bulkEditLeaguesEnabled}
-                  onCheckedChange={(checked) => setBulkEditLeaguesEnabled(!!checked)}
-                />
-                <span className="text-sm font-medium">Leagues</span>
-              </label>
-              {bulkEditLeaguesEnabled && (
-                <LeaguePicker
-                  selectedLeagues={bulkEditLeagues}
-                  onSelectionChange={setBulkEditLeagues}
-                  maxHeight="max-h-48"
-                  maxBadges={10}
-                />
-              )}
-            </div>
-
-            {/* Template */}
-            <div className="space-y-2">
-              {allMultiMode ? (
-                // Multi-league groups: use bulk template assignments
-                <>
-                  <span className="text-sm font-medium">Template Assignments</span>
-                  <p className="text-xs text-muted-foreground">
-                    Configure template assignments to apply to all {selectedIds.size} selected groups.
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      // Open template assignment modal in bulk mode
-                      setTemplateAssignmentBulkIds(Array.from(selectedIds))
-                      setTemplateAssignmentGroupId(undefined)
-                      setShowTemplateAssignment(true)
-                    }}
-                  >
-                    <Layers className="h-3 w-3 mr-1" />
-                    Manage Templates...
-                  </Button>
-                </>
-              ) : (
-                // Single-league groups: use single template dropdown
-                <>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      checked={bulkEditTemplateEnabled}
-                      onCheckedChange={(checked) => {
-                        setBulkEditTemplateEnabled(!!checked)
-                        if (!checked) {
-                          setBulkEditTemplateId(null)
-                          setBulkEditClearTemplate(false)
-                        }
-                      }}
-                    />
-                    <span className="text-sm font-medium">Template</span>
-                  </label>
-                  {bulkEditTemplateEnabled && (
-                    <>
-                      <Select
-                        value={bulkEditClearTemplate ? "" : (bulkEditTemplateId?.toString() ?? "")}
-                        onChange={(e) => {
-                          setBulkEditTemplateId(e.target.value ? parseInt(e.target.value) : null)
-                          setBulkEditClearTemplate(false)
-                        }}
-                        disabled={bulkEditClearTemplate}
-                      >
-                        <option value="">Select template...</option>
-                        {eventTemplates.map((template) => (
-                          <option key={template.id} value={template.id.toString()}>
-                            {template.name}
-                          </option>
-                        ))}
-                      </Select>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <Checkbox
-                          checked={bulkEditClearTemplate}
-                          onCheckedChange={(checked) => {
-                            setBulkEditClearTemplate(!!checked)
-                            if (checked) setBulkEditTemplateId(null)
-                          }}
-                        />
-                        <span className="text-xs text-muted-foreground">Clear (unassign template)</span>
-                      </label>
-                    </>
-                  )}
-                </>
-              )}
-            </div>
-
             {/* Channel Group */}
             <div className="space-y-2">
               <label className="flex items-center gap-2 cursor-pointer">
@@ -2184,56 +1496,6 @@ export function EventGroups() {
               )}
             </div>
 
-            {/* Soccer Mode (multi-league only) */}
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <Checkbox
-                  checked={bulkEditSoccerModeEnabled}
-                  onCheckedChange={(checked) => {
-                    setBulkEditSoccerModeEnabled(!!checked)
-                    if (!checked) {
-                      setBulkEditSoccerTeams([])
-                      setBulkEditTeamSearch('')
-                    }
-                  }}
-                />
-                <span className="text-sm font-medium">Soccer Mode</span>
-                <span className="text-xs text-muted-foreground">(multi-league groups)</span>
-              </label>
-              {bulkEditSoccerModeEnabled && (
-                <div className="space-y-3 ml-6">
-                  <Select
-                    value={bulkEditSoccerMode}
-                    onChange={(e) => {
-                      setBulkEditSoccerMode(e.target.value as 'all' | 'teams' | 'manual' | 'clear')
-                      if (e.target.value !== 'teams') {
-                        setBulkEditSoccerTeams([])
-                        setBulkEditTeamSearch('')
-                      }
-                    }}
-                  >
-                    <option value="all">All Soccer Leagues (auto-include new leagues)</option>
-                    <option value="teams">Follow Teams (auto-discover leagues)</option>
-                    <option value="manual">Manual Selection (use league picker)</option>
-                    <option value="clear">Clear (disable soccer mode)</option>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    {bulkEditSoccerMode === 'all' && "Groups will automatically include all enabled soccer leagues."}
-                    {bulkEditSoccerMode === 'teams' && "Groups will auto-discover leagues for followed teams."}
-                    {bulkEditSoccerMode === 'manual' && "Use the Leagues selector above to choose specific soccer leagues."}
-                    {bulkEditSoccerMode === 'clear' && "Removes soccer mode - groups will use their explicit league list."}
-                  </p>
-                  {bulkEditSoccerMode === 'teams' && (
-                    <BulkTeamSearch
-                      selectedTeams={bulkEditSoccerTeams}
-                      onTeamsChange={setBulkEditSoccerTeams}
-                      searchQuery={bulkEditTeamSearch}
-                      onSearchChange={setBulkEditTeamSearch}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowBulkEdit(false)}>
@@ -2241,7 +1503,7 @@ export function EventGroups() {
             </Button>
             <Button
               onClick={handleBulkEdit}
-              disabled={bulkUpdateMutation.isPending || (!bulkEditLeaguesEnabled && !bulkEditTemplateEnabled && !bulkEditChannelGroupEnabled && !bulkEditProfilesEnabled && !bulkEditStreamProfileEnabled && !bulkEditStreamTimezoneEnabled && !bulkEditSortOrderEnabled && !bulkEditOverlapHandlingEnabled && !bulkEditSoccerModeEnabled)}
+              disabled={bulkUpdateMutation.isPending || (!bulkEditChannelGroupEnabled && !bulkEditProfilesEnabled && !bulkEditStreamProfileEnabled && !bulkEditStreamTimezoneEnabled && !bulkEditSortOrderEnabled && !bulkEditOverlapHandlingEnabled)}
             >
               {bulkUpdateMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Apply to {selectedIds.size} groups
@@ -2402,40 +1664,6 @@ export function EventGroups() {
         </DialogContent>
       </Dialog>
 
-      {/* Template Assignment Modal for bulk/single selection */}
-      {(templateAssignmentGroupId || templateAssignmentBulkIds) && (
-        <TemplateAssignmentModal
-          open={showTemplateAssignment}
-          onOpenChange={(open) => {
-            setShowTemplateAssignment(open)
-            if (!open) {
-              setTemplateAssignmentGroupId(undefined)
-              setTemplateAssignmentBulkIds(undefined)
-            }
-          }}
-          groupId={templateAssignmentGroupId}
-          bulkGroupIds={templateAssignmentBulkIds}
-          groupName={
-            templateAssignmentBulkIds
-              ? `${templateAssignmentBulkIds.length} Groups`
-              : data?.groups?.find(g => g.id === templateAssignmentGroupId)?.name || "Selected Group"
-          }
-          groupLeagues={
-            templateAssignmentBulkIds
-              ? // Combine leagues from all selected groups (deduplicated)
-                [...new Set(
-                  data?.groups
-                    ?.filter(g => templateAssignmentBulkIds.includes(g.id))
-                    .flatMap(g => g.leagues) || []
-                )]
-              : data?.groups?.find(g => g.id === templateAssignmentGroupId)?.leagues || []
-          }
-          onBulkComplete={() => {
-            setShowBulkEdit(false)
-            setSelectedIds(new Set())
-          }}
-        />
-      )}
     </div>
   )
 }
