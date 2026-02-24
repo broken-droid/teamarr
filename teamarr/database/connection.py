@@ -734,6 +734,204 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("[MIGRATE] Schema upgraded to version 57 (re-apply v52 playoff bypass columns)")
         current_version = 57
 
+    # ==========================================================================
+    # v58: Sports Subscription — Decouple sports from event groups
+    # ==========================================================================
+    # Replaces per-group sport/league/template configuration with a single
+    # global subscription. Groups become sport-agnostic stream suppliers.
+    # Removes parent-child hierarchy.
+    #
+    # Steps:
+    # 1. Create sports_subscription + subscription_templates tables
+    # 2. Collect all unique leagues from enabled groups → subscription
+    # 3. Merge soccer config (prefer 'all' > 'teams' with team union > 'manual')
+    # 4. Migrate group_templates → subscription_templates (deduplicate)
+    # 5. Migrate legacy template_id → subscription_templates defaults
+    # 6. Set all groups: group_mode='multi', parent_group_id=NULL
+    # 7. Update each group's leagues to match subscription (downgrade safety)
+    if current_version < 58:
+        # 1. Create new tables (idempotent via IF NOT EXISTS)
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS sports_subscription (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                leagues JSON NOT NULL DEFAULT '[]',
+                soccer_mode TEXT DEFAULT NULL
+                    CHECK(soccer_mode IS NULL OR soccer_mode IN ('all', 'teams', 'manual')),
+                soccer_followed_teams JSON DEFAULT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            INSERT OR IGNORE INTO sports_subscription (id) VALUES (1);
+
+            CREATE TABLE IF NOT EXISTS subscription_templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                template_id INTEGER NOT NULL,
+                sports JSON,
+                leagues JSON,
+                FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE
+            );
+        """)
+
+        # 2. Collect all unique leagues from ALL enabled groups
+        all_leagues: set[str] = set()
+        cursor = conn.execute(
+            "SELECT leagues FROM event_epg_groups WHERE enabled = 1 AND leagues IS NOT NULL"
+        )
+        for row in cursor.fetchall():
+            try:
+                group_leagues = json.loads(row[0])
+                if isinstance(group_leagues, list):
+                    all_leagues.update(group_leagues)
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        # Also include leagues from disabled groups (user may re-enable)
+        cursor = conn.execute(
+            "SELECT leagues FROM event_epg_groups WHERE enabled = 0 AND leagues IS NOT NULL"
+        )
+        for row in cursor.fetchall():
+            try:
+                group_leagues = json.loads(row[0])
+                if isinstance(group_leagues, list):
+                    all_leagues.update(group_leagues)
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        subscription_leagues = sorted(all_leagues)
+        logger.info(
+            "[MIGRATE v58] Collected %d unique leagues from all groups: %s",
+            len(subscription_leagues),
+            subscription_leagues[:10],
+        )
+
+        # 3. Merge soccer config across all groups
+        # Priority: 'all' > 'teams' (merge all followed teams) > 'manual'
+        best_soccer_mode = None
+        merged_followed_teams: list[dict] = []
+        seen_team_keys: set[str] = set()
+
+        cursor = conn.execute(
+            "SELECT soccer_mode, soccer_followed_teams FROM event_epg_groups "
+            "WHERE soccer_mode IS NOT NULL"
+        )
+        for row in cursor.fetchall():
+            mode = row[0]
+            if mode == "all":
+                best_soccer_mode = "all"
+            elif mode == "teams":
+                if best_soccer_mode != "all":
+                    best_soccer_mode = "teams"
+                # Merge followed teams from this group
+                if row[1]:
+                    try:
+                        teams = json.loads(row[1])
+                        if isinstance(teams, list):
+                            for team in teams:
+                                key = f"{team.get('provider', '')}:{team.get('team_id', '')}"
+                                if key not in seen_team_keys:
+                                    seen_team_keys.add(key)
+                                    merged_followed_teams.append(team)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+            elif mode == "manual":
+                if best_soccer_mode is None:
+                    best_soccer_mode = "manual"
+
+        # Write subscription
+        conn.execute(
+            """UPDATE sports_subscription SET
+                leagues = ?,
+                soccer_mode = ?,
+                soccer_followed_teams = ?,
+                updated_at = CURRENT_TIMESTAMP
+               WHERE id = 1""",
+            (
+                json.dumps(subscription_leagues),
+                best_soccer_mode,
+                json.dumps(merged_followed_teams) if merged_followed_teams else None,
+            ),
+        )
+
+        logger.info(
+            "[MIGRATE v58] Sports subscription: %d leagues, soccer_mode=%s, %d followed teams",
+            len(subscription_leagues),
+            best_soccer_mode,
+            len(merged_followed_teams),
+        )
+
+        # 4. Migrate group_templates → subscription_templates (deduplicate)
+        # Deduplicate by (template_id, sports, leagues) — keep unique combos
+        seen_template_keys: set[str] = set()
+        try:
+            cursor = conn.execute(
+                "SELECT template_id, sports, leagues FROM group_templates ORDER BY id"
+            )
+            for row in cursor.fetchall():
+                template_id = row[0]
+                sports_val = row[1]  # Already JSON string or NULL
+                leagues_val = row[2]  # Already JSON string or NULL
+                dedup_key = f"{template_id}:{sports_val}:{leagues_val}"
+                if dedup_key not in seen_template_keys:
+                    seen_template_keys.add(dedup_key)
+                    conn.execute(
+                        """INSERT INTO subscription_templates (template_id, sports, leagues)
+                           VALUES (?, ?, ?)""",
+                        (template_id, sports_val, leagues_val),
+                    )
+        except sqlite3.OperationalError:
+            # group_templates table might not exist in minimal test databases
+            pass
+
+        logger.info(
+            "[MIGRATE v58] Migrated %d unique template assignments to subscription_templates",
+            len(seen_template_keys),
+        )
+
+        # 5. Migrate legacy template_id from groups without group_templates entries
+        # These become default subscription templates (sports=NULL, leagues=NULL)
+        try:
+            cursor = conn.execute(
+                """SELECT DISTINCT template_id FROM event_epg_groups
+                   WHERE template_id IS NOT NULL
+                     AND id NOT IN (SELECT DISTINCT group_id FROM group_templates)"""
+            )
+            for row in cursor.fetchall():
+                template_id = row[0]
+                dedup_key = f"{template_id}:None:None"
+                if dedup_key not in seen_template_keys:
+                    seen_template_keys.add(dedup_key)
+                    conn.execute(
+                        """INSERT INTO subscription_templates (template_id, sports, leagues)
+                           VALUES (?, NULL, NULL)""",
+                        (template_id,),
+                    )
+                    logger.info(
+                        "[MIGRATE v58] Migrated legacy template_id=%d as default",
+                        template_id,
+                    )
+        except sqlite3.OperationalError:
+            pass
+
+        # 6. Set all groups: group_mode='multi', parent_group_id=NULL
+        conn.execute(
+            "UPDATE event_epg_groups SET group_mode = 'multi', parent_group_id = NULL"
+        )
+        logger.info("[MIGRATE v58] All groups set to group_mode='multi', parent_group_id=NULL")
+
+        # 7. Update each group's leagues to match subscription (downgrade safety)
+        # If a user rolls back to an older version, groups still have valid leagues
+        if subscription_leagues:
+            conn.execute(
+                "UPDATE event_epg_groups SET leagues = ?",
+                (json.dumps(subscription_leagues),),
+            )
+            logger.info(
+                "[MIGRATE v58] Updated all group leagues for downgrade safety"
+            )
+
+        conn.execute("UPDATE settings SET schema_version = 58 WHERE id = 1")
+        logger.info("[MIGRATE] Schema upgraded to version 58 (sports subscription)")
+        current_version = 58
+
 
 # =============================================================================
 # LEGACY MIGRATION HELPER FUNCTIONS
