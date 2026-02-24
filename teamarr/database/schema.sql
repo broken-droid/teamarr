@@ -319,7 +319,7 @@ CREATE TABLE IF NOT EXISTS settings (
     gold_zone_stream_profile_id INTEGER,
 
     -- Schema Version
-    schema_version INTEGER DEFAULT 57
+    schema_version INTEGER DEFAULT 58
 );
 
 -- Insert default settings
@@ -481,6 +481,39 @@ CREATE TABLE IF NOT EXISTS group_templates (
 );
 
 CREATE INDEX IF NOT EXISTS idx_group_templates_group_id ON group_templates(group_id);
+
+
+-- =============================================================================
+-- SPORTS SUBSCRIPTION TABLE (singleton, id=1)
+-- Global sports/league subscription replaces per-group league configuration
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS sports_subscription (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    leagues JSON NOT NULL DEFAULT '[]',
+    soccer_mode TEXT DEFAULT NULL
+        CHECK(soccer_mode IS NULL OR soccer_mode IN ('all', 'teams', 'manual')),
+    soccer_followed_teams JSON DEFAULT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT OR IGNORE INTO sports_subscription (id) VALUES (1);
+
+
+-- =============================================================================
+-- SUBSCRIPTION TEMPLATES TABLE
+-- Global template assignments (replaces per-group group_templates)
+-- Resolution order: leagues match > sports match > default (both NULL)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS subscription_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    template_id INTEGER NOT NULL,
+    sports JSON,                              -- NULL = any, or ["mma", "boxing"]
+    leagues JSON,                             -- NULL = any, or ["ufc", "bellator"]
+
+    FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE
+);
 
 
 -- =============================================================================
