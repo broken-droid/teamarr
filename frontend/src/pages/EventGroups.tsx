@@ -749,7 +749,6 @@ export function EventGroups() {
                     </div>
                   </TableHead>
                   <TableHead className="py-0.5 pb-1.5"></TableHead>
-                  <TableHead className="py-0.5 pb-1.5"></TableHead>
                   <TableHead className="py-0.5 pb-1.5">
                     <FilterSelect
                       value={statusFilter}
@@ -773,7 +772,7 @@ export function EventGroups() {
               <TableBody>
                 {sortedGroups.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                       No groups match the current filters.
                     </TableCell>
                   </TableRow>
