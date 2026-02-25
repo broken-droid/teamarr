@@ -80,6 +80,10 @@ export interface EventGroup {
   excluded_before_window: number
   excluded_league_not_included: number
   enabled: boolean
+  // Per-group subscription overrides (null = inherit global)
+  subscription_leagues: string[] | null
+  subscription_soccer_mode: 'all' | 'teams' | 'manual' | null
+  subscription_soccer_followed_teams: SoccerFollowedTeam[] | null
   created_at: string | null
   updated_at: string | null
   channel_count?: number | null
@@ -131,6 +135,10 @@ export interface EventGroupCreate {
   team_filter_mode?: 'include' | 'exclude'
   bypass_filter_for_playoffs?: boolean | null  // null = use default
   enabled?: boolean
+  // Per-group subscription overrides (null = inherit global)
+  subscription_leagues?: string[] | null
+  subscription_soccer_mode?: 'all' | 'teams' | 'manual' | null
+  subscription_soccer_followed_teams?: SoccerFollowedTeam[] | null
   // Template assignments for multi-league groups (created with the group)
   template_assignments?: Array<{
     template_id: number
@@ -163,6 +171,9 @@ export interface EventGroupUpdate extends Partial<EventGroupCreate> {
   clear_exclude_teams?: boolean
   clear_soccer_mode?: boolean
   clear_soccer_followed_teams?: boolean
+  clear_subscription_leagues?: boolean
+  clear_subscription_soccer_mode?: boolean
+  clear_subscription_soccer_followed_teams?: boolean
 }
 
 export interface EventGroupListResponse {
@@ -182,7 +193,13 @@ export interface BulkGroupUpdateRequest {
   clear_template?: boolean
   clear_channel_group_id?: boolean
   clear_channel_profile_ids?: boolean
-
+  // Per-group subscription overrides
+  subscription_leagues?: string[] | null
+  subscription_soccer_mode?: 'all' | 'teams' | 'manual' | null
+  subscription_soccer_followed_teams?: SoccerFollowedTeam[] | null
+  clear_subscription_leagues?: boolean
+  clear_subscription_soccer_mode?: boolean
+  clear_subscription_soccer_followed_teams?: boolean
 }
 
 export interface BulkGroupUpdateResult {

@@ -353,42 +353,55 @@ class EventGroupProcessor:
         # while ensuring groups that need fresh API data can still get it
         self._shared_events: dict[str, tuple[list[Event], bool]] = {}
 
-    def _resolve_subscription_leagues(self, conn: Connection) -> list[str]:
-        """Resolve leagues from the global sports subscription.
+    def _resolve_subscription_leagues(
+        self, conn: Connection, group: "EventEPGGroup | None" = None
+    ) -> list[str]:
+        """Resolve leagues from subscription with per-group override support.
 
-        Called once per generation run, result shared across all groups.
-        Handles soccer_mode resolution (all/teams/manual) from the
-        global subscription.
+        Priority chain (follows _get_effective_team_filter pattern):
+        1. Group's own subscription overrides (if configured)
+        2. Global sports subscription (default)
+
+        Handles soccer_mode resolution (all/teams/manual) from whichever
+        level provides the subscription.
 
         Args:
             conn: Database connection
+            group: Optional group to check for overrides
 
         Returns:
-            List of league codes from the subscription, with soccer
-            leagues expanded based on soccer_mode.
+            List of league codes with soccer leagues expanded based
+            on the effective soccer_mode.
         """
         from teamarr.database.subscription import get_subscription
 
-        sub = get_subscription(conn)
-        base_leagues = list(sub.leagues) if sub.leagues else []
+        # Determine effective subscription source
+        if group and group.subscription_leagues is not None:
+            # Group has its own subscription override
+            base_leagues = list(group.subscription_leagues)
+            soccer_mode = group.subscription_soccer_mode
+            soccer_followed_teams = group.subscription_soccer_followed_teams
+        else:
+            # Fall back to global subscription
+            sub = get_subscription(conn)
+            base_leagues = list(sub.leagues) if sub.leagues else []
+            soccer_mode = sub.soccer_mode
+            soccer_followed_teams = sub.soccer_followed_teams
 
-        if sub.soccer_mode == "all":
+        if soccer_mode == "all":
             # Replace any manually-selected soccer leagues with ALL enabled
             soccer_leagues = get_enabled_soccer_leagues(conn)
-            # Remove existing soccer leagues, add all
             non_soccer = [
                 lg for lg in base_leagues if lg not in soccer_leagues
             ]
-            # Also keep non-soccer leagues that happen to not be in the
-            # soccer set (they're from other sports)
             return non_soccer + soccer_leagues
 
-        if sub.soccer_mode == "teams" and sub.soccer_followed_teams:
+        if soccer_mode == "teams" and soccer_followed_teams:
             from teamarr.consumers.cache.queries import CacheQueries
 
             cache = CacheQueries(self._db_factory)
             discovered: set[str] = set()
-            for team in sub.soccer_followed_teams:
+            for team in soccer_followed_teams:
                 provider = team.get("provider", "espn")
                 team_id = team.get("team_id")
                 if team_id:
@@ -396,22 +409,33 @@ class EventGroupProcessor:
                         team_id, provider, sport="soccer"
                     )
                     discovered.update(team_leagues)
-            # Merge discovered soccer leagues with base leagues
             return list(set(base_leagues) | discovered)
 
         # 'manual' or NULL: use subscription leagues as-is
         return base_leagues
 
-    def _get_subscription_leagues(self, conn: Connection) -> list[str]:
-        """Get subscription leagues, cached for the current run.
+    def _get_subscription_leagues(
+        self, conn: Connection, group: "EventEPGGroup | None" = None
+    ) -> list[str]:
+        """Get subscription leagues, cached per group for the current run.
 
-        Resolves once per generation run and caches the result.
+        Groups with no overrides share the global cache (key=0).
+        Groups with overrides get their own cached result (key=group.id).
         """
         if not hasattr(self, "_subscription_leagues_cache"):
-            self._subscription_leagues_cache = (
-                self._resolve_subscription_leagues(conn)
+            self._subscription_leagues_cache: dict[int, list[str]] = {}
+
+        # Key: 0 for global, group.id for overridden groups
+        has_override = (
+            group is not None and group.subscription_leagues is not None
+        )
+        cache_key = group.id if has_override else 0
+
+        if cache_key not in self._subscription_leagues_cache:
+            self._subscription_leagues_cache[cache_key] = (
+                self._resolve_subscription_leagues(conn, group)
             )
-        return self._subscription_leagues_cache
+        return self._subscription_leagues_cache[cache_key]
 
     def process_group(
         self,
@@ -890,8 +914,8 @@ class EventGroupProcessor:
                 return result
 
             # Step 2: Fetch events from data providers
-            # Use subscription leagues (resolved once per run, cached on self)
-            effective_leagues = self._get_subscription_leagues(conn)
+            # Use subscription leagues (per-group override → global fallback)
+            effective_leagues = self._get_subscription_leagues(conn, group)
             events = self._fetch_events(effective_leagues, target_date)
             logger.info(
                 f"Fetched {len(events)} events for group '{group.name}' leagues={effective_leagues}"

@@ -66,6 +66,10 @@ class EventEPGGroup:
     exclude_teams: list[dict] | None = None
     team_filter_mode: str = "include"
     bypass_filter_for_playoffs: bool | None = None  # NULL=use default, True/False=override
+    # Per-group subscription overrides (NULL = inherit global)
+    subscription_leagues: list[str] | None = None
+    subscription_soccer_mode: str | None = None
+    subscription_soccer_followed_teams: list[dict] | None = None
     # Processing stats by category (FILTERED / FAILED / EXCLUDED)
     filtered_stale: int = 0  # FILTERED: Stream marked as stale in Dispatcharr
     filtered_include_regex: int = 0  # FILTERED: Didn't match include regex
@@ -192,6 +196,23 @@ def _row_to_group(row) -> EventEPGGroup:
             bool(row["bypass_filter_for_playoffs"])
             if "bypass_filter_for_playoffs" in row.keys()
             and row["bypass_filter_for_playoffs"] is not None
+            else None
+        ),
+        # Per-group subscription overrides
+        subscription_leagues=(
+            json.loads(row["subscription_leagues"])
+            if "subscription_leagues" in row.keys() and row["subscription_leagues"]
+            else None
+        ),
+        subscription_soccer_mode=(
+            row["subscription_soccer_mode"]
+            if "subscription_soccer_mode" in row.keys()
+            else None
+        ),
+        subscription_soccer_followed_teams=(
+            json.loads(row["subscription_soccer_followed_teams"])
+            if "subscription_soccer_followed_teams" in row.keys()
+            and row["subscription_soccer_followed_teams"]
             else None
         ),
         # Processing stats by category (FILTERED / FAILED / EXCLUDED)
@@ -389,6 +410,10 @@ def create_group(
     channel_sort_order: str = "time",
     overlap_handling: str = "add_stream",
     enabled: bool = True,
+    # Per-group subscription overrides (NULL = inherit global)
+    subscription_leagues: list[str] | None = None,
+    subscription_soccer_mode: str | None = None,
+    subscription_soccer_followed_teams: list[dict] | None = None,
 ) -> int:
     """Create a new event EPG group.
 
@@ -441,8 +466,9 @@ def create_group(
             custom_regex_event_name, custom_regex_event_name_enabled,
             skip_builtin_filter,
             include_teams, exclude_teams, team_filter_mode,
-            channel_sort_order, overlap_handling, enabled
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",  # noqa: E501
+            channel_sort_order, overlap_handling, enabled,
+            subscription_leagues, subscription_soccer_mode, subscription_soccer_followed_teams
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",  # noqa: E501
         (
             name,
             display_name,
@@ -488,6 +514,10 @@ def create_group(
             channel_sort_order,
             overlap_handling,
             int(enabled),
+            json.dumps(subscription_leagues) if subscription_leagues else None,
+            subscription_soccer_mode,
+            json.dumps(subscription_soccer_followed_teams)
+            if subscription_soccer_followed_teams else None,
         ),
     )
     group_id = cursor.lastrowid
@@ -575,6 +605,13 @@ def update_group(
     clear_exclude_teams: bool = False,
     clear_soccer_mode: bool = False,
     clear_soccer_followed_teams: bool = False,
+    # Per-group subscription overrides (NULL = inherit global)
+    subscription_leagues: list[str] | None = None,
+    subscription_soccer_mode: str | None = None,
+    subscription_soccer_followed_teams: list[dict] | None = None,
+    clear_subscription_leagues: bool = False,
+    clear_subscription_soccer_mode: bool = False,
+    clear_subscription_soccer_followed_teams: bool = False,
 ) -> bool:
     """Update an event EPG group.
 
@@ -877,6 +914,25 @@ def update_group(
     if enabled is not None:
         updates.append("enabled = ?")
         values.append(int(enabled))
+
+    # Per-group subscription overrides
+    if subscription_leagues is not None:
+        updates.append("subscription_leagues = ?")
+        values.append(json.dumps(subscription_leagues))
+    elif clear_subscription_leagues:
+        updates.append("subscription_leagues = NULL")
+
+    if subscription_soccer_mode is not None:
+        updates.append("subscription_soccer_mode = ?")
+        values.append(subscription_soccer_mode)
+    elif clear_subscription_soccer_mode:
+        updates.append("subscription_soccer_mode = NULL")
+
+    if subscription_soccer_followed_teams is not None:
+        updates.append("subscription_soccer_followed_teams = ?")
+        values.append(json.dumps(subscription_soccer_followed_teams))
+    elif clear_subscription_soccer_followed_teams:
+        updates.append("subscription_soccer_followed_teams = NULL")
 
     if not updates:
         return False

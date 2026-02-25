@@ -130,6 +130,10 @@ class GroupCreate(BaseModel):
     channel_sort_order: str = "time"
     overlap_handling: str = "add_stream"
     enabled: bool = True
+    # Per-group subscription overrides (NULL = inherit global)
+    subscription_leagues: list[str] | None = None
+    subscription_soccer_mode: str | None = None
+    subscription_soccer_followed_teams: list[SoccerFollowedTeam] | None = None
     # Deprecated: template_assignments now managed via subscription_templates
     template_assignments: list["GroupTemplateCreate"] | None = None
 
@@ -190,6 +194,10 @@ class GroupUpdate(BaseModel):
     channel_sort_order: str | None = None
     overlap_handling: str | None = None
     enabled: bool | None = None
+    # Per-group subscription overrides (NULL = inherit global)
+    subscription_leagues: list[str] | None = None
+    subscription_soccer_mode: str | None = None
+    subscription_soccer_followed_teams: list[SoccerFollowedTeam] | None = None
 
     # Clear flags for nullable fields
     clear_display_name: bool = False
@@ -216,6 +224,9 @@ class GroupUpdate(BaseModel):
     clear_exclude_teams: bool = False
     clear_soccer_mode: bool = False
     clear_soccer_followed_teams: bool = False
+    clear_subscription_leagues: bool = False
+    clear_subscription_soccer_mode: bool = False
+    clear_subscription_soccer_followed_teams: bool = False
 
     @field_validator("channel_profile_ids", mode="before")
     @classmethod
@@ -295,6 +306,10 @@ class GroupResponse(BaseModel):
     channel_sort_order: str = "time"
     overlap_handling: str = "add_stream"
     enabled: bool = True
+    # Per-group subscription overrides (NULL = inherit global)
+    subscription_leagues: list[str] | None = None
+    subscription_soccer_mode: str | None = None
+    subscription_soccer_followed_teams: list[SoccerFollowedTeam] | None = None
     created_at: str | None = None
     updated_at: str | None = None
     channel_count: int | None = None
@@ -440,6 +455,13 @@ class BulkGroupUpdateRequest(BaseModel):
     clear_stream_timezone: bool = False
     clear_soccer_mode: bool = False
     clear_soccer_followed_teams: bool = False
+    # Per-group subscription overrides
+    subscription_leagues: list[str] | None = None
+    subscription_soccer_mode: str | None = None
+    subscription_soccer_followed_teams: list[SoccerFollowedTeam] | None = None
+    clear_subscription_leagues: bool = False
+    clear_subscription_soccer_mode: bool = False
+    clear_subscription_soccer_followed_teams: bool = False
 
     @field_validator("channel_profile_ids", mode="before")
     @classmethod
@@ -657,6 +679,13 @@ def list_groups(
                 channel_sort_order=g.channel_sort_order,
                 overlap_handling=g.overlap_handling,
                 enabled=g.enabled,
+                subscription_leagues=g.subscription_leagues,
+                subscription_soccer_mode=g.subscription_soccer_mode,
+                subscription_soccer_followed_teams=(
+                    [SoccerFollowedTeam(**t) for t in g.subscription_soccer_followed_teams]
+                )
+                if g.subscription_soccer_followed_teams
+                else None,
                 created_at=g.created_at.isoformat() if g.created_at else None,
                 updated_at=g.updated_at.isoformat() if g.updated_at else None,
                 channel_count=stats.get(g.id, {}).get("active"),
@@ -741,6 +770,13 @@ def create_group(request: GroupCreate):
             channel_sort_order="time",  # Deprecated — global ordering in v59
             overlap_handling="add_stream",  # Deprecated — global consolidation in v59
             enabled=request.enabled,
+            subscription_leagues=request.subscription_leagues,
+            subscription_soccer_mode=request.subscription_soccer_mode,
+            subscription_soccer_followed_teams=(
+                [t.model_dump() for t in request.subscription_soccer_followed_teams]
+            )
+            if request.subscription_soccer_followed_teams
+            else None,
         )
 
         # Create template assignments if provided (for multi-league groups)
@@ -824,6 +860,13 @@ def create_group(request: GroupCreate):
         channel_sort_order=group.channel_sort_order,
         overlap_handling=group.overlap_handling,
         enabled=group.enabled,
+        subscription_leagues=group.subscription_leagues,
+        subscription_soccer_mode=group.subscription_soccer_mode,
+        subscription_soccer_followed_teams=(
+            [SoccerFollowedTeam(**t) for t in group.subscription_soccer_followed_teams]
+        )
+        if group.subscription_soccer_followed_teams
+        else None,
         created_at=group.created_at.isoformat() if group.created_at else None,
         updated_at=group.updated_at.isoformat() if group.updated_at else None,
     )
@@ -1003,6 +1046,16 @@ def update_groups_bulk(request: BulkGroupUpdateRequest):
                     clear_stream_timezone=request.clear_stream_timezone,
                     clear_soccer_mode=request.clear_soccer_mode,
                     clear_soccer_followed_teams=request.clear_soccer_followed_teams,
+                    subscription_leagues=request.subscription_leagues,
+                    subscription_soccer_mode=request.subscription_soccer_mode,
+                    subscription_soccer_followed_teams=(
+                [t.model_dump() for t in request.subscription_soccer_followed_teams]
+            )
+                    if request.subscription_soccer_followed_teams
+                    else None,
+                    clear_subscription_leagues=request.clear_subscription_leagues,
+                    clear_subscription_soccer_mode=request.clear_subscription_soccer_mode,
+                    clear_subscription_soccer_followed_teams=request.clear_subscription_soccer_followed_teams,
                 )
 
                 results.append(
@@ -1170,6 +1223,13 @@ def get_group_by_id(group_id: int):
         channel_sort_order=group.channel_sort_order,
         overlap_handling=group.overlap_handling,
         enabled=group.enabled,
+        subscription_leagues=group.subscription_leagues,
+        subscription_soccer_mode=group.subscription_soccer_mode,
+        subscription_soccer_followed_teams=(
+            [SoccerFollowedTeam(**t) for t in group.subscription_soccer_followed_teams]
+        )
+        if group.subscription_soccer_followed_teams
+        else None,
         created_at=group.created_at.isoformat() if group.created_at else None,
         updated_at=group.updated_at.isoformat() if group.updated_at else None,
         channel_count=channel_count,
@@ -1291,6 +1351,16 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
                 clear_exclude_teams=request.clear_exclude_teams,
                 clear_soccer_mode=request.clear_soccer_mode,
                 clear_soccer_followed_teams=request.clear_soccer_followed_teams,
+                subscription_leagues=request.subscription_leagues,
+                subscription_soccer_mode=request.subscription_soccer_mode,
+                subscription_soccer_followed_teams=(
+                [t.model_dump() for t in request.subscription_soccer_followed_teams]
+            )
+                if request.subscription_soccer_followed_teams
+                else None,
+                clear_subscription_leagues=request.clear_subscription_leagues,
+                clear_subscription_soccer_mode=request.clear_subscription_soccer_mode,
+                clear_subscription_soccer_followed_teams=request.clear_subscription_soccer_followed_teams,
             )
         except ValueError as e:
             raise HTTPException(
@@ -1375,6 +1445,13 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
         channel_sort_order=group.channel_sort_order,
         overlap_handling=group.overlap_handling,
         enabled=group.enabled,
+        subscription_leagues=group.subscription_leagues,
+        subscription_soccer_mode=group.subscription_soccer_mode,
+        subscription_soccer_followed_teams=(
+            [SoccerFollowedTeam(**t) for t in group.subscription_soccer_followed_teams]
+        )
+        if group.subscription_soccer_followed_teams
+        else None,
         created_at=group.created_at.isoformat() if group.created_at else None,
         updated_at=group.updated_at.isoformat() if group.updated_at else None,
         channel_count=channel_count,
