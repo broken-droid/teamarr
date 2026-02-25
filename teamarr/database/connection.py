@@ -1045,6 +1045,21 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("[MIGRATE] Schema upgraded to version 59 (channel numbering overhaul)")
         current_version = 59
 
+    # v60: Per-group subscription overrides (NULL = inherit global)
+    if current_version < 60:
+        _add_column_if_not_exists(
+            conn, "event_epg_groups", "subscription_leagues", "JSON"
+        )
+        _add_column_if_not_exists(
+            conn, "event_epg_groups", "subscription_soccer_mode", "TEXT"
+        )
+        _add_column_if_not_exists(
+            conn, "event_epg_groups", "subscription_soccer_followed_teams", "JSON"
+        )
+        conn.execute("UPDATE settings SET schema_version = 60 WHERE id = 1")
+        logger.info("[MIGRATE] Schema upgraded to version 60 (per-group subscription overrides)")
+        current_version = 60
+
 
 # =============================================================================
 # LEGACY MIGRATION HELPER FUNCTIONS

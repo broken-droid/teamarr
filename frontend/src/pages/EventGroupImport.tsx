@@ -19,7 +19,6 @@ import {
 import { cn } from "@/lib/utils"
 import { Loader2, Tv, Eye, Plus, AlertCircle, Info, Check } from "lucide-react"
 import { ChannelProfileSelector } from "@/components/ChannelProfileSelector"
-import { StreamProfileSelector } from "@/components/StreamProfileSelector"
 import { StreamTimezoneSelector } from "@/components/StreamTimezoneSelector"
 
 // Types
@@ -105,7 +104,6 @@ export function EventGroupImport() {
   const [bulkChannelGroupId, setBulkChannelGroupId] = useState<number | null>(null)
   const [bulkChannelGroupMode, setBulkChannelGroupMode] = useState<string>('static')
   const [bulkChannelProfileIds, setBulkChannelProfileIds] = useState<(number | string)[]>([])
-  const [bulkStreamProfileId, setBulkStreamProfileId] = useState<number | null>(null)
   const [bulkStreamTimezone, setBulkStreamTimezone] = useState<string | null>(null)
   const [bulkEnabled, setBulkEnabled] = useState(true)
   const [bulkImporting, setBulkImporting] = useState(false)
@@ -244,7 +242,6 @@ export function EventGroupImport() {
           channel_group_id: bulkChannelGroupMode === 'static' ? bulkChannelGroupId : null,
           channel_group_mode: bulkChannelGroupMode,
           channel_profile_ids: bulkChannelProfileIds.length > 0 ? bulkChannelProfileIds : null,
-          stream_profile_id: bulkStreamProfileId,
           stream_timezone: bulkStreamTimezone,
           enabled: bulkEnabled,
         },
@@ -707,13 +704,6 @@ export function EventGroupImport() {
                   <ChannelProfileSelector
                     selectedIds={bulkChannelProfileIds}
                     onChange={setBulkChannelProfileIds}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Stream Profile</Label>
-                  <StreamProfileSelector
-                    value={bulkStreamProfileId}
-                    onChange={setBulkStreamProfileId}
                   />
                 </div>
                 <div className="space-y-2">

@@ -335,7 +335,7 @@ CREATE TABLE IF NOT EXISTS settings (
         CHECK(global_consolidation_mode IN ('consolidate', 'separate')),
 
     -- Schema Version
-    schema_version INTEGER DEFAULT 59
+    schema_version INTEGER DEFAULT 60
 );
 
 -- Insert default settings
@@ -458,6 +458,12 @@ CREATE TABLE IF NOT EXISTS event_epg_groups (
         CHECK(channel_sort_order IN ('time', 'sport_time', 'league_time')),
     overlap_handling TEXT DEFAULT 'add_stream'
         CHECK(overlap_handling IN ('add_stream', 'add_only', 'create_all', 'skip')),
+
+    -- Per-Group Subscription Overrides (NULL = inherit global subscription)
+    subscription_leagues JSON,                   -- Override subscribed leagues for this group
+    subscription_soccer_mode TEXT                 -- Override soccer mode for this group
+        CHECK(subscription_soccer_mode IS NULL OR subscription_soccer_mode IN ('all', 'teams', 'manual')),
+    subscription_soccer_followed_teams JSON,     -- Override followed teams for this group
 
     -- Status
     enabled BOOLEAN DEFAULT 1,

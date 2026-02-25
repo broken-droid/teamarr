@@ -2016,7 +2016,6 @@ class EventGroupProcessor:
             "channel_profile_ids": group.channel_profile_ids,
             "m3u_account_id": group.m3u_account_id,
             "m3u_account_name": group.m3u_account_name,
-            "stream_profile_id": group.stream_profile_id,
         }
 
         # Load template from database if configured

@@ -18,7 +18,6 @@ import {
 import type { EventGroupCreate, EventGroupUpdate } from "@/api/types"
 import { TeamPicker } from "@/components/TeamPicker"
 import { ChannelProfileSelector } from "@/components/ChannelProfileSelector"
-import { StreamProfileSelector } from "@/components/StreamProfileSelector"
 import { StreamTimezoneSelector } from "@/components/StreamTimezoneSelector"
 import { TestPatternsModal, type PatternState } from "@/components/TestPatternsModal"
 
@@ -105,7 +104,6 @@ export function EventGroupForm() {
   const [streamTimezoneExpanded, setStreamTimezoneExpanded] = useState(false)
   const [channelGroupExpanded, setChannelGroupExpanded] = useState(false)
   const [channelProfilesExpanded, setChannelProfilesExpanded] = useState(false)
-  const [streamProfileExpanded, setStreamProfileExpanded] = useState(false)
   const [regexExpanded, setRegexExpanded] = useState(false)
   const [teamFilterExpanded, setTeamFilterExpanded] = useState(false)
 
@@ -164,7 +162,6 @@ export function EventGroupForm() {
         channel_group_id: group.channel_group_id,
         channel_group_mode: group.channel_group_mode || "static",
         channel_profile_ids: group.channel_profile_ids,  // Keep null = "use default"
-        stream_profile_id: group.stream_profile_id,  // Keep null = "use global default"
         stream_timezone: group.stream_timezone,  // Keep null = "auto-detect from stream"
         sort_order: group.sort_order,
         total_stream_count: group.total_stream_count,
@@ -1223,39 +1220,6 @@ export function EventGroupForm() {
                   onChange={(ids) => setFormData({ ...formData, channel_profile_ids: ids })}
                   disabled={useDefaultProfiles}
                 />
-            </CardContent>}
-          </Card>
-
-          {/* Stream Profile */}
-          <Card>
-            <CardHeader
-              className="cursor-pointer hover:bg-muted/50 rounded-t-lg"
-              onClick={() => setStreamProfileExpanded(!streamProfileExpanded)}
-            >
-              <div className="flex items-center gap-2">
-                {streamProfileExpanded ? (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                )}
-                <div>
-                  <CardTitle>Stream Profile</CardTitle>
-                  {streamProfileExpanded && (
-                    <CardDescription>
-                      How streams are processed when played
-                    </CardDescription>
-                  )}
-                </div>
-              </div>
-            </CardHeader>
-            {streamProfileExpanded && <CardContent>
-              <StreamProfileSelector
-                value={formData.stream_profile_id ?? null}
-                onChange={(id) => setFormData({ ...formData, stream_profile_id: id })}
-              />
-              <p className="text-xs text-muted-foreground mt-2">
-                How streams are processed (ffmpeg, VLC, proxy, etc). Leave empty to use global default.
-              </p>
             </CardContent>}
           </Card>
 

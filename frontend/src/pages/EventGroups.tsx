@@ -55,7 +55,6 @@ import {
 import type { EventGroup, PreviewGroupResponse } from "@/api/types"
 import { getLeagues } from "@/api/teams"
 import { ChannelProfileSelector } from "@/components/ChannelProfileSelector"
-import { StreamProfileSelector } from "@/components/StreamProfileSelector"
 import { StreamTimezoneSelector } from "@/components/StreamTimezoneSelector"
 import { SubscribedSports } from "@/components/SubscribedSports"
 import { getLeagueDisplayName } from "@/lib/utils"
@@ -125,9 +124,6 @@ export function EventGroups() {
   const [bulkEditProfilesEnabled, setBulkEditProfilesEnabled] = useState(false)
   const [bulkEditProfileIds, setBulkEditProfileIds] = useState<(number | string)[]>([])
   const [bulkEditUseDefaultProfiles, setBulkEditUseDefaultProfiles] = useState(true)
-  const [bulkEditStreamProfileEnabled, setBulkEditStreamProfileEnabled] = useState(false)
-  const [bulkEditStreamProfileId, setBulkEditStreamProfileId] = useState<number | null>(null)
-  const [bulkEditUseDefaultStreamProfile, setBulkEditUseDefaultStreamProfile] = useState(true)
   const [bulkEditStreamTimezoneEnabled, setBulkEditStreamTimezoneEnabled] = useState(false)
   const [bulkEditStreamTimezone, setBulkEditStreamTimezone] = useState<string | null>(null)
   const [bulkEditClearStreamTimezone, setBulkEditClearStreamTimezone] = useState(false)
@@ -410,11 +406,9 @@ export function EventGroups() {
       channel_group_id?: number | null
       channel_group_mode?: 'static' | 'sport' | 'league'
       channel_profile_ids?: (number | string)[]
-      stream_profile_id?: number | null
       stream_timezone?: string | null
       clear_channel_group_id?: boolean
       clear_channel_profile_ids?: boolean
-      clear_stream_profile_id?: boolean
       clear_stream_timezone?: boolean
     } = { group_ids: ids }
 
@@ -435,15 +429,6 @@ export function EventGroups() {
       } else {
         // Custom selection (could be empty [] for "no profiles" or specific ids)
         request.channel_profile_ids = bulkEditProfileIds
-      }
-    }
-    if (bulkEditStreamProfileEnabled) {
-      if (bulkEditUseDefaultStreamProfile) {
-        // Use default = clear and fall back to global setting (null)
-        request.clear_stream_profile_id = true
-      } else {
-        // Specific stream profile selected
-        request.stream_profile_id = bulkEditStreamProfileId
       }
     }
     if (bulkEditStreamTimezoneEnabled) {
@@ -1285,45 +1270,6 @@ export function EventGroups() {
               )}
             </div>
 
-            {/* Stream Profile */}
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <Checkbox
-                  checked={bulkEditStreamProfileEnabled}
-                  onCheckedChange={(checked) => setBulkEditStreamProfileEnabled(!!checked)}
-                />
-                <span className="text-sm font-medium">Stream Profile</span>
-              </label>
-              {bulkEditStreamProfileEnabled && (
-                <div className="space-y-2 pl-6">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      checked={bulkEditUseDefaultStreamProfile}
-                      onCheckedChange={(checked) => {
-                        setBulkEditUseDefaultStreamProfile(!!checked)
-                        if (checked) {
-                          setBulkEditStreamProfileId(null)
-                        }
-                      }}
-                    />
-                    <span className="text-sm font-normal">
-                      Use default stream profile
-                    </span>
-                  </label>
-                  <StreamProfileSelector
-                    value={bulkEditStreamProfileId}
-                    onChange={setBulkEditStreamProfileId}
-                    disabled={bulkEditUseDefaultStreamProfile}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {bulkEditUseDefaultStreamProfile
-                      ? "Using default stream profile from global settings"
-                      : "Select specific stream profile for these groups"}
-                  </p>
-                </div>
-              )}
-            </div>
-
             {/* Stream Timezone */}
             <div className="space-y-2">
               <label className="flex items-center gap-2 cursor-pointer">
@@ -1368,7 +1314,7 @@ export function EventGroups() {
             </Button>
             <Button
               onClick={handleBulkEdit}
-              disabled={bulkUpdateMutation.isPending || (!bulkEditChannelGroupEnabled && !bulkEditProfilesEnabled && !bulkEditStreamProfileEnabled && !bulkEditStreamTimezoneEnabled)}
+              disabled={bulkUpdateMutation.isPending || (!bulkEditChannelGroupEnabled && !bulkEditProfilesEnabled && !bulkEditStreamTimezoneEnabled)}
             >
               {bulkUpdateMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Apply to {selectedIds.size} groups

@@ -474,21 +474,16 @@ class ChannelLifecycleService:
                 # Returns None if not configured, [] if explicitly empty, [1,2,...] if set
                 raw_profile_ids = group_config.get("channel_profile_ids")
 
-                # Fallback to default profiles from settings ONLY if group hasn't configured
-                # (raw value is None/missing). If group explicitly set [] for no profiles, use that.
-                if raw_profile_ids is None:
-                    from teamarr.database.settings import get_dispatcharr_settings
+                # Fallback to default profiles/stream profile from global settings
+                from teamarr.database.settings import get_dispatcharr_settings
 
-                    dispatcharr_settings = get_dispatcharr_settings(conn)
+                dispatcharr_settings = get_dispatcharr_settings(conn)
+
+                if raw_profile_ids is None:
                     raw_profile_ids = dispatcharr_settings.default_channel_profile_ids
 
-                # Stream profile: group setting overrides global default
-                stream_profile_id = group_config.get("stream_profile_id")
-                if stream_profile_id is None:
-                    from teamarr.database.settings import get_dispatcharr_settings
-
-                    dispatcharr_settings = get_dispatcharr_settings(conn)
-                    stream_profile_id = dispatcharr_settings.default_stream_profile_id
+                # Stream profile: always global default
+                stream_profile_id = dispatcharr_settings.default_stream_profile_id
 
                 for matched in matched_streams:
                     try:
@@ -1576,7 +1571,7 @@ class ChannelLifecycleService:
         | group               | channel_profile_ids | Add/remove via profile API  |
         | template            | logo_id             | Upload/update if different  |
         | event_id            | tvg_id              | Ensures EPG matching        |
-        | group/settings      | stream_profile_id   | Group override > global     |
+        | settings (global)   | stream_profile_id   | Always global default       |
         """
         from teamarr.database.channels import (
             log_channel_history,
@@ -1932,24 +1927,13 @@ class ChannelLifecycleService:
         current_channel: Any,
         changes_made: list[str],
     ) -> None:
-        """Sync stream_profile_id (group override > global default)."""
-        expected_stream_profile = group_config.get("stream_profile_id")
-        if expected_stream_profile is None:
-            from teamarr.database.settings import get_dispatcharr_settings
+        """Sync stream_profile_id (always global default)."""
+        from teamarr.database.settings import get_dispatcharr_settings
 
-            dispatcharr_settings = get_dispatcharr_settings(conn)
-            expected_stream_profile = dispatcharr_settings.default_stream_profile_id
+        dispatcharr_settings = get_dispatcharr_settings(conn)
+        expected_stream_profile = dispatcharr_settings.default_stream_profile_id
 
         current_stream_profile = current_channel.stream_profile_id
-        logger.debug(
-            "[LIFECYCLE] Stream profile for '%s': group_config=%s, global_default=%s, "
-            "dispatcharr_current=%s, expected=%s",
-            existing.channel_name,
-            group_config.get("stream_profile_id"),
-            expected_stream_profile if group_config.get("stream_profile_id") is None else "N/A",
-            current_stream_profile,
-            expected_stream_profile,
-        )
         if expected_stream_profile != current_stream_profile:
             with self._dispatcharr_lock:
                 api_ok = self._safe_update_channel(
