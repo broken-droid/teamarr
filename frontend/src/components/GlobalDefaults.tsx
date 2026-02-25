@@ -294,7 +294,7 @@ export function GlobalDefaults() {
               <p className="text-sm text-muted-foreground">
                 {hasLocalChanges
                   ? "You have unsaved changes. Save to apply."
-                  : "League changes trigger EPG regeneration on next run."}
+                  : "Groups without their own subscription overrides will use these defaults."}
               </p>
               <Button
                 onClick={handleSave}
