@@ -29,6 +29,21 @@ class SportsSubscription:
 
 
 @dataclass
+class SubscriptionLeagueConfig:
+    """Per-league overrides for channel profiles and channel groups.
+
+    Fallback chain: per-league → global default → Dispatcharr default.
+    NULL fields inherit from the global default.
+    """
+
+    id: int = 0
+    league_code: str = ""
+    channel_profile_ids: list[int | str] | None = None
+    channel_group_id: int | None = None
+    channel_group_mode: str | None = None
+
+
+@dataclass
 class SubscriptionTemplate:
     """Global template assignment with optional sport/league filters.
 
@@ -390,3 +405,89 @@ def get_subscription_template_for_event(
         len(templates),
     )
     return None
+
+
+# =============================================================================
+# SUBSCRIPTION LEAGUE CONFIG CRUD
+# =============================================================================
+
+
+def get_league_configs(
+    conn: Connection,
+) -> list[SubscriptionLeagueConfig]:
+    """Get all per-league config overrides."""
+    rows = conn.execute(
+        "SELECT * FROM subscription_league_config ORDER BY league_code"
+    ).fetchall()
+    return [_build_league_config(row) for row in rows]
+
+
+def get_league_config(
+    conn: Connection, league_code: str
+) -> SubscriptionLeagueConfig | None:
+    """Get config for a specific league."""
+    row = conn.execute(
+        "SELECT * FROM subscription_league_config WHERE league_code = ?",
+        (league_code,),
+    ).fetchone()
+    return _build_league_config(row) if row else None
+
+
+def upsert_league_config(
+    conn: Connection,
+    league_code: str,
+    channel_profile_ids: list[int | str] | None = None,
+    channel_group_id: int | None = None,
+    channel_group_mode: str | None = None,
+) -> SubscriptionLeagueConfig:
+    """Create or update per-league config. Returns the saved config."""
+    conn.execute(
+        """INSERT INTO subscription_league_config
+           (league_code, channel_profile_ids, channel_group_id,
+            channel_group_mode)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(league_code) DO UPDATE SET
+               channel_profile_ids = excluded.channel_profile_ids,
+               channel_group_id = excluded.channel_group_id,
+               channel_group_mode = excluded.channel_group_mode
+        """,
+        (
+            league_code,
+            json.dumps(channel_profile_ids)
+            if channel_profile_ids is not None
+            else None,
+            channel_group_id,
+            channel_group_mode,
+        ),
+    )
+    logger.info("[LEAGUE_CONFIG] Upserted config for %s", league_code)
+    return get_league_config(conn, league_code)
+
+
+def delete_league_config(conn: Connection, league_code: str) -> bool:
+    """Delete per-league config. Returns True if deleted."""
+    cursor = conn.execute(
+        "DELETE FROM subscription_league_config WHERE league_code = ?",
+        (league_code,),
+    )
+    if cursor.rowcount > 0:
+        logger.info("[LEAGUE_CONFIG] Deleted config for %s", league_code)
+        return True
+    return False
+
+
+def _build_league_config(row) -> SubscriptionLeagueConfig:
+    """Build SubscriptionLeagueConfig from a database row."""
+    profile_ids = None
+    if row["channel_profile_ids"]:
+        try:
+            profile_ids = json.loads(row["channel_profile_ids"])
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return SubscriptionLeagueConfig(
+        id=row["id"],
+        league_code=row["league_code"],
+        channel_profile_ids=profile_ids,
+        channel_group_id=row["channel_group_id"],
+        channel_group_mode=row["channel_group_mode"],
+    )

@@ -335,7 +335,7 @@ CREATE TABLE IF NOT EXISTS settings (
         CHECK(global_consolidation_mode IN ('consolidate', 'separate')),
 
     -- Schema Version
-    schema_version INTEGER DEFAULT 60
+    schema_version INTEGER DEFAULT 61
 );
 
 -- Insert default settings
@@ -535,6 +535,22 @@ CREATE TABLE IF NOT EXISTS subscription_templates (
     leagues JSON,                             -- NULL = any, or ["ufc", "bellator"]
 
     FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE
+);
+
+
+-- =============================================================================
+-- SUBSCRIPTION LEAGUE CONFIG TABLE
+-- Per-league overrides for channel profiles and channel groups
+-- Fallback chain: per-league → global default → Dispatcharr default
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS subscription_league_config (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    league_code TEXT NOT NULL UNIQUE,
+    channel_profile_ids JSON DEFAULT NULL,     -- NULL = use global default
+    channel_group_id INTEGER DEFAULT NULL,     -- NULL = use global default
+    channel_group_mode TEXT DEFAULT NULL        -- NULL = use global default ('static', 'sport', 'league')
+        CHECK(channel_group_mode IS NULL OR channel_group_mode IN ('static', 'sport', 'league'))
 );
 
 

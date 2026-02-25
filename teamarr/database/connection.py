@@ -1060,6 +1060,22 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("[MIGRATE] Schema upgraded to version 60 (per-group subscription overrides)")
         current_version = 60
 
+    if current_version < 61:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS subscription_league_config (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                league_code TEXT NOT NULL UNIQUE,
+                channel_profile_ids JSON DEFAULT NULL,
+                channel_group_id INTEGER DEFAULT NULL,
+                channel_group_mode TEXT DEFAULT NULL
+                    CHECK(channel_group_mode IS NULL
+                          OR channel_group_mode IN ('static', 'sport', 'league'))
+            )
+        """)
+        conn.execute("UPDATE settings SET schema_version = 61 WHERE id = 1")
+        logger.info("[MIGRATE] Schema upgraded to version 61 (subscription league config)")
+        current_version = 61
+
 
 # =============================================================================
 # LEGACY MIGRATION HELPER FUNCTIONS
