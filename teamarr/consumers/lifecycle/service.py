@@ -60,14 +60,15 @@ class ChannelLifecycleService:
        Resolves: name, tvg_id, logo, channel_group, channel_profiles,
                  stream_profile, channel_number, delete_time
        Context available: event, template, matched_keyword, segment,
-                          group_config (channel_group_mode, profile_ids, etc.)
+                          group_config (m3u_account), dispatcharr_settings,
+                          per-league subscription configs
 
     2. **Sync** (`_sync_channel_settings`):
        Entry: `_handle_existing_channel` → existing channel → `_sync_channel_settings`
        Re-resolves: name, channel_number, channel_group, streams, tvg_id,
                     delete_time, channel_profiles, logo, stream_profile
        Context available: event, template, existing (DB record), segment,
-                          group_config
+                          group_config (m3u_account), dispatcharr_settings
 
     3. **EPG Generator** (`event_epg.py:generate_for_matched_streams`):
        Entry: `event_group_processor._generate_xmltv` → EPG channel names/logos
@@ -466,24 +467,15 @@ class ChannelLifecycleService:
                 from teamarr.database.channel_numbers import get_global_consolidation_mode
                 duplicate_mode = get_global_consolidation_mode(conn)
 
-                # Channel group settings - now supports dynamic modes
-                static_channel_group_id = group_config.get("channel_group_id")
-                channel_group_mode = group_config.get(
-                    "channel_group_mode", "static"
-                )
+                # Channel group defaults (per-league overrides applied in event loop)
+                static_channel_group_id = None
+                channel_group_mode = "static"
 
-                # Parse profile IDs from group config
-                raw_profile_ids = group_config.get("channel_profile_ids")
-
-                # Fallback to default profiles/stream profile from global settings
+                # Profile IDs from global settings (per-league overrides below)
                 from teamarr.database.settings import get_dispatcharr_settings
 
                 dispatcharr_settings = get_dispatcharr_settings(conn)
-
-                if raw_profile_ids is None:
-                    raw_profile_ids = (
-                        dispatcharr_settings.default_channel_profile_ids
-                    )
+                raw_profile_ids = dispatcharr_settings.default_channel_profile_ids
 
                 # Load per-league subscription configs for override
                 from teamarr.database.subscription import get_league_configs
@@ -1645,8 +1637,8 @@ class ChannelLifecycleService:
                 changes_made.append(f"number: {current_number} → {expected_number}")
 
             # 3. Check channel_group_id (supports dynamic sport/league resolution)
-            channel_group_mode = group_config.get("channel_group_mode", "static")
-            static_group_id = group_config.get("channel_group_id")
+            channel_group_mode = "static"
+            static_group_id = None
             event_sport = getattr(event, "sport", None)
             event_league = getattr(event, "league", None)
 
@@ -1743,7 +1735,7 @@ class ChannelLifecycleService:
 
             # 7. Sync channel_profile_ids (compares against Dispatcharr actual state)
             self._sync_channel_profiles(
-                conn, existing, group_config, event_sport, event_league, changes_made,
+                conn, existing, event_sport, event_league, changes_made,
                 current_channel=current_channel,
             )
 
@@ -1754,7 +1746,7 @@ class ChannelLifecycleService:
 
             # 9. Sync stream_profile_id
             self._sync_stream_profile(
-                conn, existing, group_config, current_channel, changes_made
+                conn, existing, current_channel, changes_made
             )
 
             # Log changes if any
@@ -1790,7 +1782,6 @@ class ChannelLifecycleService:
         self,
         conn: Connection,
         existing: Any,
-        group_config: dict,
         event_sport: str | None,
         event_league: str | None,
         changes_made: list[str],
@@ -1806,8 +1797,10 @@ class ChannelLifecycleService:
           [] = NO profiles, [0] = ALL profiles (sentinel), [1,2,...] = specific IDs
         """
         from teamarr.database.channels import update_managed_channel
+        from teamarr.database.settings import get_dispatcharr_settings
 
-        raw_group_profiles = group_config.get("channel_profile_ids")
+        dispatcharr_settings = get_dispatcharr_settings(conn)
+        raw_group_profiles = dispatcharr_settings.default_channel_profile_ids
 
         # Per-league subscription config override for profiles
         if event_league and hasattr(self, "_league_configs"):
@@ -1968,7 +1961,6 @@ class ChannelLifecycleService:
         self,
         conn: Connection,
         existing: Any,
-        group_config: dict,
         current_channel: Any,
         changes_made: list[str],
     ) -> None:

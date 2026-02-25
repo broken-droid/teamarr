@@ -26,10 +26,6 @@ export interface EventGroup {
   parent_group_id: number | null
   template_id: number | null
   group_template_count: number  // Count of templates via Manage Templates
-  channel_group_id: number | null
-  channel_group_mode: string  // Dynamic channel group assignment mode
-  channel_profile_ids: (number | string)[] | null  // null = use global default, can include "{sport}", "{league}"
-
   stream_timezone: string | null  // IANA timezone for interpreting stream dates (e.g., 'America/New_York')
   channel_assignment_mode: string
   sort_order: number
@@ -98,10 +94,6 @@ export interface EventGroupCreate {
   group_mode?: string  // "single" or "multi" - persisted to preserve user intent
   parent_group_id?: number | null
   template_id?: number | null
-  channel_group_id?: number | null
-  channel_group_mode?: string  // Dynamic channel group assignment mode
-  channel_profile_ids?: (number | string)[] | null  // null = use global default, can include "{sport}", "{league}"
-
   stream_timezone?: string | null  // IANA timezone for interpreting stream dates
   channel_assignment_mode?: string
   sort_order?: number
@@ -151,9 +143,6 @@ export interface EventGroupUpdate extends Partial<EventGroupCreate> {
   clear_display_name?: boolean
   clear_parent_group_id?: boolean
   clear_template?: boolean
-  clear_channel_group_id?: boolean
-  clear_channel_profile_ids?: boolean
-
   clear_stream_timezone?: boolean
   clear_m3u_group_id?: boolean
   clear_m3u_group_name?: boolean
@@ -185,14 +174,8 @@ export interface BulkGroupUpdateRequest {
   group_ids: number[]
   leagues?: string[]
   template_id?: number | null
-  channel_group_id?: number | null
-  channel_group_mode?: string
-  channel_profile_ids?: (number | string)[] | null  // null = use global default, can include "{sport}", "{league}"
-
   stream_timezone?: string | null  // IANA timezone for interpreting stream dates
   clear_template?: boolean
-  clear_channel_group_id?: boolean
-  clear_channel_profile_ids?: boolean
   // Per-group subscription overrides
   subscription_leagues?: string[] | null
   subscription_soccer_mode?: 'all' | 'teams' | 'manual' | null

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
-import { ArrowLeft, Loader2, Save, ChevronRight, ChevronDown, X, Plus, Check, FlaskConical } from "lucide-react"
+import { ArrowLeft, Loader2, Save, ChevronRight, ChevronDown, FlaskConical } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -17,36 +17,12 @@ import {
 } from "@/hooks/useGroups"
 import type { EventGroupCreate, EventGroupUpdate } from "@/api/types"
 import { TeamPicker } from "@/components/TeamPicker"
-import { ChannelProfileSelector } from "@/components/ChannelProfileSelector"
 import { StreamTimezoneSelector } from "@/components/StreamTimezoneSelector"
 import { TestPatternsModal, type PatternState } from "@/components/TestPatternsModal"
 import { LeaguePicker } from "@/components/LeaguePicker"
 import { SoccerModeSelector, type SoccerMode } from "@/components/SoccerModeSelector"
 import { getLeagues } from "@/api/teams"
 import type { SoccerFollowedTeam } from "@/api/types"
-
-// Dispatcharr channel group
-interface ChannelGroup {
-  id: number
-  name: string
-}
-
-async function fetchChannelGroups(): Promise<ChannelGroup[]> {
-  // exclude_m3u=true filters out M3U-originated groups, showing only user-created groups
-  const response = await fetch("/api/v1/dispatcharr/channel-groups?exclude_m3u=true")
-  if (!response.ok) {
-    throw new Error(response.status === 503 ? "Dispatcharr not connected" : "Failed to fetch channel groups")
-  }
-  return response.json()
-}
-
-async function createChannelGroup(name: string): Promise<ChannelGroup | null> {
-  const response = await fetch(`/api/v1/dispatcharr/channel-groups?name=${encodeURIComponent(name)}`, {
-    method: "POST",
-  })
-  if (!response.ok) return null
-  return response.json()
-}
 
 export function EventGroupForm() {
   const { groupId } = useParams<{ groupId: string }>()
@@ -67,7 +43,6 @@ export function EventGroupForm() {
     leagues: [],
     parent_group_id: null,
     template_id: null,
-    channel_group_mode: "static",  // Dynamic channel group assignment mode
     sort_order: 0,
     total_stream_count: 0,
     m3u_group_id: m3uGroupId ? Number(m3uGroupId) : null,
@@ -87,28 +62,10 @@ export function EventGroupForm() {
     isEdit ? Number(groupId) : 0
   )
 
-  // Fetch channel groups from Dispatcharr
-  const { data: channelGroups, refetch: refetchChannelGroups, isError: channelGroupsError, error: channelGroupsErrorMsg } = useQuery({
-    queryKey: ["dispatcharr-channel-groups"],
-    queryFn: fetchChannelGroups,
-    retry: false,  // Don't retry on connection errors
-  })
-
-
-  // Inline create state
-  const [showCreateGroup, setShowCreateGroup] = useState(false)
-  const [newGroupName, setNewGroupName] = useState("")
-  const [creatingGroup, setCreatingGroup] = useState(false)
-
-  // Filter state for channel groups
-  const [channelGroupFilter, setChannelGroupFilter] = useState("")
-
   // Collapsible section states
   const [basicSettingsExpanded, setBasicSettingsExpanded] = useState(false)
   const [subscriptionOverrideExpanded, setSubscriptionOverrideExpanded] = useState(false)
   const [streamTimezoneExpanded, setStreamTimezoneExpanded] = useState(false)
-  const [channelGroupExpanded, setChannelGroupExpanded] = useState(false)
-  const [channelProfilesExpanded, setChannelProfilesExpanded] = useState(false)
   const [regexExpanded, setRegexExpanded] = useState(false)
   const [teamFilterExpanded, setTeamFilterExpanded] = useState(false)
 
@@ -118,9 +75,6 @@ export function EventGroupForm() {
 
   // Test Patterns modal
   const [testPatternsOpen, setTestPatternsOpen] = useState(false)
-
-  // Channel profile default state - true = use global default, false = custom selection
-  const [useDefaultProfiles, setUseDefaultProfiles] = useState(true)
 
   // Team filter default state - true = use global default, false = custom per-group filter
   const [useDefaultTeamFilter, setUseDefaultTeamFilter] = useState(true)
@@ -178,9 +132,6 @@ export function EventGroupForm() {
         leagues: group.leagues,
         parent_group_id: group.parent_group_id,
         template_id: group.template_id,
-        channel_group_id: group.channel_group_id,
-        channel_group_mode: group.channel_group_mode || "static",
-        channel_profile_ids: group.channel_profile_ids,  // Keep null = "use default"
         stream_timezone: group.stream_timezone,  // Keep null = "auto-detect from stream"
         sort_order: group.sort_order,
         total_stream_count: group.total_stream_count,
@@ -215,9 +166,6 @@ export function EventGroupForm() {
         enabled: group.enabled,
       })
 
-      // Set useDefaultProfiles based on whether channel_profile_ids is null (use default) or has a value
-      setUseDefaultProfiles(group.channel_profile_ids === null || group.channel_profile_ids === undefined)
-
       // Set useDefaultTeamFilter based on whether include_teams/exclude_teams are null (use default)
       // null means use global default, any array (even empty) means custom per-group filter
       const hasCustomTeamFilter = group.include_teams !== null || group.exclude_teams !== null
@@ -245,14 +193,6 @@ export function EventGroupForm() {
       }
     }
   }, [group, allLeagues])
-
-  // Filtered channel groups based on search
-  const filteredChannelGroups = useMemo(() => {
-    if (!channelGroups) return []
-    if (!channelGroupFilter) return channelGroups
-    const filter = channelGroupFilter.toLowerCase()
-    return channelGroups.filter(g => g.name.toLowerCase().includes(filter))
-  }, [channelGroups, channelGroupFilter])
 
   const handleSubmit = async () => {
     if (!formData.name.trim()) {
@@ -282,9 +222,6 @@ export function EventGroupForm() {
           const shouldClear = (original: unknown, current: unknown) =>
             original != null && (current == null || current === undefined)
 
-          if (shouldClear(group.channel_group_id, formData.channel_group_id)) {
-            updateData.clear_channel_group_id = true
-          }
           if (shouldClear(group.display_name, formData.display_name)) {
             updateData.clear_display_name = true
           }
@@ -1086,278 +1023,6 @@ export function EventGroupForm() {
               <p className="text-xs text-muted-foreground mt-2">
                 Optional. Timezone markers (e.g., "ET", "PT") are auto-detected. Set this only if your provider omits them and uses a different timezone than yours.
               </p>
-            </CardContent>}
-          </Card>
-
-          {/* Channel Group Assignment */}
-          <Card>
-            <CardHeader
-              className="cursor-pointer hover:bg-muted/50 rounded-t-lg"
-              onClick={() => setChannelGroupExpanded(!channelGroupExpanded)}
-            >
-              <div className="flex items-center gap-2">
-                {channelGroupExpanded ? (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                )}
-                <div>
-                  <CardTitle>Channel Group</CardTitle>
-                  {channelGroupExpanded && (
-                    <CardDescription>
-                      Managed channels will be assigned to the selected group in Dispatcharr
-                    </CardDescription>
-                  )}
-                </div>
-              </div>
-            </CardHeader>
-            {channelGroupExpanded && <CardContent>
-                <div className="flex flex-col gap-3">
-                  {/* Existing group option with nested group list */}
-                  <div>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="channel_group_mode"
-                        value="static"
-                        checked={formData.channel_group_mode === "static"}
-                        onChange={() => setFormData({ ...formData, channel_group_mode: "static" })}
-                        className="accent-primary"
-                      />
-                      <span className="text-sm">Existing group</span>
-                    </label>
-                    {/* Nested group selection - always visible but disabled when not static */}
-                    <div className={`mt-2 ml-6 space-y-2 ${formData.channel_group_mode !== "static" ? "opacity-40 pointer-events-none" : ""}`}>
-                <div className="flex gap-2 items-center">
-                  <Input
-                    placeholder="Filter groups..."
-                    value={channelGroupFilter}
-                    onChange={(e) => setChannelGroupFilter(e.target.value)}
-                    className="flex-1"
-                  />
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setShowCreateGroup(!showCreateGroup)}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-                {showCreateGroup && (
-                  <div className="flex gap-2 p-2 bg-muted/50 rounded-md">
-                    <Input
-                      placeholder="New group name..."
-                      value={newGroupName}
-                      onChange={(e) => setNewGroupName(e.target.value)}
-                      className="flex-1"
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={creatingGroup || !newGroupName.trim()}
-                      onClick={async () => {
-                        setCreatingGroup(true)
-                        const created = await createChannelGroup(newGroupName.trim())
-                        setCreatingGroup(false)
-                        if (created) {
-                          toast.success(`Created group "${created.name}"`)
-                          setFormData({ ...formData, channel_group_id: created.id })
-                          setNewGroupName("")
-                          setShowCreateGroup(false)
-                          setChannelGroupFilter("")
-                          refetchChannelGroups()
-                        } else {
-                          toast.error("Failed to create group")
-                        }
-                      }}
-                    >
-                      {creatingGroup ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setShowCreateGroup(false)
-                        setNewGroupName("")
-                      }}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                )}
-                <div className="border rounded-md max-h-36 overflow-y-auto">
-                  {/* "None" option */}
-                  <button
-                    type="button"
-                    className={cn(
-                      "w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-accent border-b",
-                      !formData.channel_group_id && "bg-primary/10"
-                    )}
-                    onClick={() => setFormData({ ...formData, channel_group_id: undefined })}
-                  >
-                    <div className={cn(
-                      "w-4 h-4 border rounded flex items-center justify-center",
-                      !formData.channel_group_id && "bg-primary border-primary"
-                    )}>
-                      {!formData.channel_group_id && <Check className="h-3 w-3 text-primary-foreground" />}
-                    </div>
-                    <span className="text-muted-foreground italic">&lt;No group assignment&gt;</span>
-                  </button>
-                  {channelGroupsError ? (
-                    <div className="p-3 text-sm text-destructive text-center">
-                      {channelGroupsErrorMsg instanceof Error ? channelGroupsErrorMsg.message : "Failed to load channel groups"}
-                    </div>
-                  ) : filteredChannelGroups.length === 0 ? (
-                    <div className="p-3 text-sm text-muted-foreground text-center">
-                      {channelGroupFilter ? "No matching groups" : "No groups found"}
-                    </div>
-                  ) : (
-                    filteredChannelGroups.map((g) => {
-                      const isSelected = formData.channel_group_id === g.id
-                      return (
-                        <button
-                          key={g.id}
-                          type="button"
-                          className={cn(
-                            "w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-accent border-b last:border-b-0",
-                            isSelected && "bg-primary/10"
-                          )}
-                          onClick={() => setFormData({ ...formData, channel_group_id: g.id })}
-                        >
-                          <div className={cn(
-                            "w-4 h-4 border rounded flex items-center justify-center",
-                            isSelected && "bg-primary border-primary"
-                          )}>
-                            {isSelected && <Check className="h-3 w-3 text-primary-foreground" />}
-                          </div>
-                          <span className="flex-1">{g.name}</span>
-                        </button>
-                      )
-                    })
-                  )}
-                </div>
-                    </div>
-                  </div>
-
-                  {/* Dynamic group options */}
-                  <div className="border rounded-md bg-muted/30">
-                    <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                      Dynamic Groups
-                    </div>
-                    <div className="divide-y">
-                      <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-accent">
-                        <input
-                          type="radio"
-                          name="channel_group_mode"
-                          value="{sport}"
-                          checked={formData.channel_group_mode === "{sport}"}
-                          onChange={() => setFormData({ ...formData, channel_group_mode: "{sport}" })}
-                          className="accent-primary"
-                        />
-                        <div className="flex-1">
-                          <code className="text-sm font-medium bg-muted px-1 rounded">{"{sport}"}</code>
-                          <p className="text-xs text-muted-foreground mt-0.5">Assign channels to a group by sport name (e.g., Basketball). Group created if it doesn't exist.</p>
-                        </div>
-                      </label>
-                      <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-accent">
-                        <input
-                          type="radio"
-                          name="channel_group_mode"
-                          value="{league}"
-                          checked={formData.channel_group_mode === "{league}"}
-                          onChange={() => setFormData({ ...formData, channel_group_mode: "{league}" })}
-                          className="accent-primary"
-                        />
-                        <div className="flex-1">
-                          <code className="text-sm font-medium bg-muted px-1 rounded">{"{league}"}</code>
-                          <p className="text-xs text-muted-foreground mt-0.5">Assign channels to a group by league name (e.g., NBA, NFL). Group created if it doesn't exist.</p>
-                        </div>
-                      </label>
-                      <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-accent">
-                        <input
-                          type="radio"
-                          name="channel_group_mode"
-                          value="custom"
-                          checked={formData.channel_group_mode !== "static" && formData.channel_group_mode !== "{sport}" && formData.channel_group_mode !== "{league}"}
-                          onChange={() => setFormData({ ...formData, channel_group_mode: "{sport} | {league}" })}
-                          className="accent-primary"
-                        />
-                        <div className="flex-1">
-                          <span className="text-sm font-medium">Custom</span>
-                          <p className="text-xs text-muted-foreground mt-0.5">Define a custom pattern with variables.</p>
-                        </div>
-                      </label>
-                      {formData.channel_group_mode !== "static" && formData.channel_group_mode !== "{sport}" && formData.channel_group_mode !== "{league}" && (
-                        <div className="p-3 space-y-2">
-                          <Input
-                            value={formData.channel_group_mode}
-                            onChange={(e) => setFormData({ ...formData, channel_group_mode: e.target.value })}
-                            placeholder="Sports | {sport} | {league}"
-                            className="font-mono text-sm"
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Available: <code className="bg-muted px-1 rounded">{"{sport}"}</code>, <code className="bg-muted px-1 rounded">{"{league}"}</code>
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-            </CardContent>}
-          </Card>
-
-          {/* Channel Profiles */}
-          <Card>
-            <CardHeader
-              className="cursor-pointer hover:bg-muted/50 rounded-t-lg"
-              onClick={() => setChannelProfilesExpanded(!channelProfilesExpanded)}
-            >
-              <div className="flex items-center gap-2">
-                {channelProfilesExpanded ? (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                )}
-                <div>
-                  <CardTitle>Channel Profiles</CardTitle>
-                  {channelProfilesExpanded && (
-                    <CardDescription>
-                      Managed channels will be added to the selected profiles in Dispatcharr
-                    </CardDescription>
-                  )}
-                </div>
-              </div>
-            </CardHeader>
-            {channelProfilesExpanded && <CardContent>
-                <label className="flex items-center gap-2 mb-2 cursor-pointer">
-                  <Checkbox
-                    checked={useDefaultProfiles}
-                    onCheckedChange={() => {
-                      const newValue = !useDefaultProfiles
-                      setUseDefaultProfiles(newValue)
-                      if (newValue) {
-                        setFormData({ ...formData, channel_profile_ids: null })
-                      } else {
-                        setFormData({ ...formData, channel_profile_ids: [] })
-                      }
-                    }}
-                  />
-                  <span className="text-sm font-normal">
-                    Use default channel profiles (set in Integrations tab in Settings)
-                  </span>
-                </label>
-                {!useDefaultProfiles && (
-                  <p className="text-xs text-muted-foreground mb-2">
-                    Select specific profiles for this group
-                  </p>
-                )}
-                <ChannelProfileSelector
-                  selectedIds={formData.channel_profile_ids || []}
-                  onChange={(ids) => setFormData({ ...formData, channel_profile_ids: ids })}
-                  disabled={useDefaultProfiles}
-                />
             </CardContent>}
           </Card>
 

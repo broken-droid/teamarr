@@ -40,7 +40,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { FilterSelect } from "@/components/ui/filter-select"
-import { Select } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import {
   useBulkUpdateGroups,
@@ -54,18 +53,9 @@ import {
 } from "@/hooks/useGroups"
 import type { EventGroup, PreviewGroupResponse } from "@/api/types"
 import { getLeagues } from "@/api/teams"
-import { ChannelProfileSelector } from "@/components/ChannelProfileSelector"
 import { StreamTimezoneSelector } from "@/components/StreamTimezoneSelector"
 import { SubscribedSports } from "@/components/SubscribedSports"
 import { getLeagueDisplayName } from "@/lib/utils"
-
-// Fetch Dispatcharr channel groups for name lookup
-async function fetchChannelGroups(): Promise<{ id: number; name: string }[]> {
-  const response = await fetch("/api/v1/groups/dispatcharr/channel-groups")
-  if (!response.ok) return []
-  const data = await response.json()
-  return data.groups || []
-}
 
 // Helper to get display name (prefer display_name over name)
 const getDisplayName = (group: EventGroup) => group.display_name || group.name
@@ -75,7 +65,6 @@ export function EventGroups() {
   const { data, isLoading, error, refetch } = useGroups(true)
   const { data: leaguesResponse } = useQuery({ queryKey: ["leagues"], queryFn: () => getLeagues() })
   const cachedLeagues = leaguesResponse?.leagues
-  const { data: channelGroups } = useQuery({ queryKey: ["dispatcharr-channel-groups"], queryFn: fetchChannelGroups })
   const deleteMutation = useDeleteGroup()
   const toggleMutation = useToggleGroup()
   const bulkUpdateMutation = useBulkUpdateGroups()
@@ -95,17 +84,6 @@ export function EventGroups() {
   const [clearCacheConfirm, setClearCacheConfirm] = useState<EventGroup | null>(null)
   const [showBulkClearCache, setShowBulkClearCache] = useState(false)
 
-  // Create channel group ID to name lookup
-  const channelGroupNames = useMemo(() => {
-    const names: Record<number, string> = {}
-    if (channelGroups) {
-      for (const group of channelGroups) {
-        names[group.id] = group.name
-      }
-    }
-    return names
-  }, [channelGroups])
-
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
 
@@ -117,13 +95,6 @@ export function EventGroups() {
   const [showBulkDelete, setShowBulkDelete] = useState(false)
   const [showBulkEdit, setShowBulkEdit] = useState(false)
   // Bulk edit form state - checkboxes control which fields to update
-  const [bulkEditChannelGroupEnabled, setBulkEditChannelGroupEnabled] = useState(false)
-  const [bulkEditChannelGroupId, setBulkEditChannelGroupId] = useState<number | null>(null)
-  const [bulkEditChannelGroupMode, setBulkEditChannelGroupMode] = useState<'static' | 'sport' | 'league'>('static')
-  const [bulkEditClearChannelGroup, setBulkEditClearChannelGroup] = useState(false)
-  const [bulkEditProfilesEnabled, setBulkEditProfilesEnabled] = useState(false)
-  const [bulkEditProfileIds, setBulkEditProfileIds] = useState<(number | string)[]>([])
-  const [bulkEditUseDefaultProfiles, setBulkEditUseDefaultProfiles] = useState(true)
   const [bulkEditStreamTimezoneEnabled, setBulkEditStreamTimezoneEnabled] = useState(false)
   const [bulkEditStreamTimezone, setBulkEditStreamTimezone] = useState<string | null>(null)
   const [bulkEditClearStreamTimezone, setBulkEditClearStreamTimezone] = useState(false)
@@ -382,16 +353,8 @@ export function EventGroups() {
     setShowBulkDelete(false)
   }
 
-  // Check if selection has mixed group_modes (single vs multi)
   // Reset bulk edit form state
   const resetBulkEditForm = () => {
-    setBulkEditChannelGroupEnabled(false)
-    setBulkEditChannelGroupId(null)
-    setBulkEditChannelGroupMode('static')
-    setBulkEditClearChannelGroup(false)
-    setBulkEditProfilesEnabled(false)
-    setBulkEditProfileIds([])
-    setBulkEditUseDefaultProfiles(true)
     setBulkEditStreamTimezoneEnabled(false)
     setBulkEditStreamTimezone(null)
     setBulkEditClearStreamTimezone(false)
@@ -403,34 +366,10 @@ export function EventGroups() {
     // Build request with only enabled fields
     const request: {
       group_ids: number[]
-      channel_group_id?: number | null
-      channel_group_mode?: 'static' | 'sport' | 'league'
-      channel_profile_ids?: (number | string)[]
       stream_timezone?: string | null
-      clear_channel_group_id?: boolean
-      clear_channel_profile_ids?: boolean
       clear_stream_timezone?: boolean
     } = { group_ids: ids }
 
-    if (bulkEditChannelGroupEnabled) {
-      if (bulkEditClearChannelGroup) {
-        request.clear_channel_group_id = true
-      } else {
-        request.channel_group_mode = bulkEditChannelGroupMode
-        if (bulkEditChannelGroupMode === 'static' && bulkEditChannelGroupId) {
-          request.channel_group_id = bulkEditChannelGroupId
-        }
-      }
-    }
-    if (bulkEditProfilesEnabled) {
-      if (bulkEditUseDefaultProfiles) {
-        // Use default = clear and fall back to global setting (null)
-        request.clear_channel_profile_ids = true
-      } else {
-        // Custom selection (could be empty [] for "no profiles" or specific ids)
-        request.channel_profile_ids = bulkEditProfileIds
-      }
-    }
     if (bulkEditStreamTimezoneEnabled) {
       if (bulkEditClearStreamTimezone) {
         // Reset to auto-detect from stream
@@ -768,7 +707,6 @@ export function EventGroups() {
                       Name <SortIcon column="name" />
                     </div>
                   </TableHead>
-                  <TableHead className="text-center w-20">Ch Group</TableHead>
                   <TableHead
                     className="w-24 text-center cursor-pointer hover:bg-muted/50"
                     onClick={() => handleSort("matched")}
@@ -812,7 +750,6 @@ export function EventGroups() {
                   </TableHead>
                   <TableHead className="py-0.5 pb-1.5"></TableHead>
                   <TableHead className="py-0.5 pb-1.5"></TableHead>
-                  <TableHead className="py-0.5 pb-1.5"></TableHead>
                   <TableHead className="py-0.5 pb-1.5">
                     <FilterSelect
                       value={statusFilter}
@@ -836,7 +773,7 @@ export function EventGroups() {
               <TableBody>
                 {sortedGroups.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       No groups match the current filters.
                     </TableCell>
                   </TableRow>
@@ -902,24 +839,6 @@ export function EventGroups() {
                             )}
                           </div>
                         </TableCell>
-                    {/* Ch Group Column */}
-                    <TableCell className="text-center">
-                      {group.channel_group_mode && group.channel_group_mode !== "static" ? (
-                        <Badge
-                          variant="outline"
-                          className="bg-blue-500/15 text-blue-400 border-blue-500/30 text-xs font-mono"
-                          title="Dynamic channel group"
-                        >
-                          {group.channel_group_mode}
-                        </Badge>
-                      ) : group.channel_group_id ? (
-                        <Badge variant="secondary" className="text-xs" title={`ID: ${group.channel_group_id}`}>
-                          {channelGroupNames[group.channel_group_id] || `#${group.channel_group_id}`}
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
                     {/* Matched Column with Progress Bar */}
                     <TableCell className="text-center">
                       {group.stream_count && group.stream_count > 0 ? (
@@ -1116,160 +1035,6 @@ export function EventGroups() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4 px-1 max-h-[60vh] overflow-y-auto">
-            {/* Channel Group */}
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <Checkbox
-                  checked={bulkEditChannelGroupEnabled}
-                  onCheckedChange={(checked) => {
-                    setBulkEditChannelGroupEnabled(!!checked)
-                    if (!checked) {
-                      setBulkEditChannelGroupId(null)
-                      setBulkEditChannelGroupMode('static')
-                      setBulkEditClearChannelGroup(false)
-                    }
-                  }}
-                />
-                <span className="text-sm font-medium">Channel Group</span>
-              </label>
-              {bulkEditChannelGroupEnabled && (
-                <div className="space-y-3">
-                  {/* Clear option */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      checked={bulkEditClearChannelGroup}
-                      onCheckedChange={(checked) => {
-                        setBulkEditClearChannelGroup(!!checked)
-                        if (checked) {
-                          setBulkEditChannelGroupId(null)
-                          setBulkEditChannelGroupMode('static')
-                        }
-                      }}
-                    />
-                    <span className="text-xs text-muted-foreground">Clear (remove from channel group)</span>
-                  </label>
-
-                  {!bulkEditClearChannelGroup && (
-                    <div className="space-y-2">
-                      {/* Static group option */}
-                      <div>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="bulk_channel_group_mode"
-                            checked={bulkEditChannelGroupMode === "static"}
-                            onChange={() => setBulkEditChannelGroupMode("static")}
-                            className="accent-primary"
-                          />
-                          <span className="text-sm">Existing group</span>
-                        </label>
-                        <div className={`mt-2 ml-6 ${bulkEditChannelGroupMode !== "static" ? "opacity-40 pointer-events-none" : ""}`}>
-                          <Select
-                            value={bulkEditChannelGroupId?.toString() ?? ""}
-                            onChange={(e) => setBulkEditChannelGroupId(e.target.value ? parseInt(e.target.value) : null)}
-                            disabled={bulkEditChannelGroupMode !== "static"}
-                          >
-                            <option value="">Select channel group...</option>
-                            {channelGroups?.map((group) => (
-                              <option key={group.id} value={group.id.toString()}>
-                                {group.name}
-                              </option>
-                            ))}
-                          </Select>
-                        </div>
-                      </div>
-
-                      {/* Dynamic group options */}
-                      <div className="border rounded-md bg-muted/30">
-                        <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                          Dynamic Groups
-                        </div>
-                        <div className="divide-y">
-                          <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-accent">
-                            <input
-                              type="radio"
-                              name="bulk_channel_group_mode"
-                              checked={bulkEditChannelGroupMode === "sport"}
-                              onChange={() => {
-                                setBulkEditChannelGroupMode("sport")
-                                setBulkEditChannelGroupId(null)
-                              }}
-                              className="accent-primary"
-                            />
-                            <div className="flex-1">
-                              <code className="text-sm font-medium bg-muted px-1 rounded">{"{sport}"}</code>
-                              <p className="text-xs text-muted-foreground mt-0.5">Assign channels to a group by sport name</p>
-                            </div>
-                          </label>
-                          <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-accent">
-                            <input
-                              type="radio"
-                              name="bulk_channel_group_mode"
-                              checked={bulkEditChannelGroupMode === "league"}
-                              onChange={() => {
-                                setBulkEditChannelGroupMode("league")
-                                setBulkEditChannelGroupId(null)
-                              }}
-                              className="accent-primary"
-                            />
-                            <div className="flex-1">
-                              <code className="text-sm font-medium bg-muted px-1 rounded">{"{league}"}</code>
-                              <p className="text-xs text-muted-foreground mt-0.5">Assign channels to a group by league name</p>
-                            </div>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Channel Profiles */}
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <Checkbox
-                  checked={bulkEditProfilesEnabled}
-                  onCheckedChange={(checked) => {
-                    setBulkEditProfilesEnabled(!!checked)
-                    if (!checked) {
-                      setBulkEditProfileIds([])
-                      setBulkEditUseDefaultProfiles(true)
-                    }
-                  }}
-                />
-                <span className="text-sm font-medium">Channel Profiles</span>
-              </label>
-              {bulkEditProfilesEnabled && (
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      checked={bulkEditUseDefaultProfiles}
-                      onCheckedChange={(checked) => {
-                        setBulkEditUseDefaultProfiles(!!checked)
-                        if (checked) {
-                          setBulkEditProfileIds([])
-                        }
-                      }}
-                    />
-                    <span className="text-sm font-normal">
-                      Use default channel profiles
-                    </span>
-                  </label>
-                  <ChannelProfileSelector
-                    selectedIds={bulkEditProfileIds}
-                    onChange={setBulkEditProfileIds}
-                    disabled={bulkEditUseDefaultProfiles}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {bulkEditUseDefaultProfiles
-                      ? "Using default profiles from global settings"
-                      : "Select specific profiles for these groups"}
-                  </p>
-                </div>
-              )}
-            </div>
-
             {/* Stream Timezone */}
             <div className="space-y-2">
               <label className="flex items-center gap-2 cursor-pointer">
@@ -1314,7 +1079,7 @@ export function EventGroups() {
             </Button>
             <Button
               onClick={handleBulkEdit}
-              disabled={bulkUpdateMutation.isPending || (!bulkEditChannelGroupEnabled && !bulkEditProfilesEnabled && !bulkEditStreamTimezoneEnabled)}
+              disabled={bulkUpdateMutation.isPending || !bulkEditStreamTimezoneEnabled}
             >
               {bulkUpdateMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Apply to {selectedIds.size} groups

@@ -25,9 +25,6 @@ class EventEPGGroup:
     group_mode: str = "single"  # "single" or "multi" - persisted to preserve user intent
     template_id: int | None = None
     channel_start_number: int | None = None
-    channel_group_id: int | None = None
-    channel_group_mode: str = "static"  # "static", "sport", "league"
-    channel_profile_ids: list[int | str] | None = None  # null = use default, [] = no profiles
     stream_timezone: str | None = None  # Timezone for stream datetime parsing
     duplicate_event_handling: str = "consolidate"
     channel_assignment_mode: str = "auto"
@@ -94,13 +91,6 @@ class EventEPGGroup:
 def _row_to_group(row) -> EventEPGGroup:
     """Convert a database row to EventEPGGroup."""
     leagues = json.loads(row["leagues"]) if row["leagues"] else []
-    # Preserve None (use default) vs [] (no profiles) distinction
-    channel_profile_ids = None
-    if row["channel_profile_ids"]:
-        try:
-            channel_profile_ids = json.loads(row["channel_profile_ids"])
-        except (json.JSONDecodeError, TypeError):
-            channel_profile_ids = None
 
     created_at = None
     if row["created_at"]:
@@ -135,11 +125,6 @@ def _row_to_group(row) -> EventEPGGroup:
         group_mode=row["group_mode"] if "group_mode" in row.keys() else "single",
         template_id=row["template_id"],
         channel_start_number=row["channel_start_number"],
-        channel_group_id=row["channel_group_id"],
-        channel_group_mode=row["channel_group_mode"]
-        if "channel_group_mode" in row.keys()
-        else "static",
-        channel_profile_ids=channel_profile_ids,
         stream_timezone=row["stream_timezone"] if "stream_timezone" in row.keys() else None,
         duplicate_event_handling=row["duplicate_event_handling"] or "consolidate",
         channel_assignment_mode=row["channel_assignment_mode"] or "auto",
@@ -370,9 +355,6 @@ def create_group(
     group_mode: str = "single",
     template_id: int | None = None,
     channel_start_number: int | None = None,
-    channel_group_id: int | None = None,
-    channel_group_mode: str = "static",
-    channel_profile_ids: list[int | str] | None = None,
     stream_timezone: str | None = None,
     duplicate_event_handling: str = "consolidate",
     channel_assignment_mode: str = "auto",
@@ -423,8 +405,6 @@ def create_group(
         leagues: List of league codes to scan
         template_id: Optional template ID
         channel_start_number: Starting channel number (for MANUAL mode)
-        channel_group_id: Dispatcharr channel group ID
-        channel_profile_ids: List of channel profile IDs
         duplicate_event_handling: How to handle duplicate events
         channel_assignment_mode: 'auto' or 'manual'
         sort_order: Ordering for AUTO channel allocation
@@ -452,7 +432,7 @@ def create_group(
     cursor = conn.execute(
         """INSERT INTO event_epg_groups (
             name, display_name, leagues, soccer_mode, soccer_followed_teams, group_mode, template_id,
-            channel_start_number, channel_group_id, channel_group_mode, channel_profile_ids,
+            channel_start_number,
             stream_timezone, duplicate_event_handling,
             channel_assignment_mode, sort_order, total_stream_count, parent_group_id,
             m3u_group_id, m3u_group_name, m3u_account_id, m3u_account_name,
@@ -468,7 +448,7 @@ def create_group(
             include_teams, exclude_teams, team_filter_mode,
             channel_sort_order, overlap_handling, enabled,
             subscription_leagues, subscription_soccer_mode, subscription_soccer_followed_teams
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",  # noqa: E501
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",  # noqa: E501
         (
             name,
             display_name,
@@ -478,9 +458,6 @@ def create_group(
             group_mode,
             template_id,
             channel_start_number,
-            channel_group_id,
-            channel_group_mode,
-            json.dumps(channel_profile_ids) if channel_profile_ids else None,
             stream_timezone,
             duplicate_event_handling,
             channel_assignment_mode,
@@ -541,9 +518,6 @@ def update_group(
     group_mode: str | None = None,
     template_id: int | None = None,
     channel_start_number: int | None = None,
-    channel_group_id: int | None = None,
-    channel_group_mode: str | None = None,
-    channel_profile_ids: list[int | str] | None = None,
     stream_timezone: str | None = None,
     duplicate_event_handling: str | None = None,
     channel_assignment_mode: str | None = None,
@@ -585,8 +559,6 @@ def update_group(
     clear_display_name: bool = False,
     clear_template: bool = False,
     clear_channel_start_number: bool = False,
-    clear_channel_group_id: bool = False,
-    clear_channel_profile_ids: bool = False,
     clear_stream_timezone: bool = False,
     clear_parent_group_id: bool = False,
     clear_m3u_group_id: bool = False,
@@ -672,22 +644,6 @@ def update_group(
     elif clear_channel_start_number:
         updates.append("channel_start_number = NULL")
 
-    if channel_group_id is not None:
-        updates.append("channel_group_id = ?")
-        values.append(channel_group_id)
-    elif clear_channel_group_id:
-        updates.append("channel_group_id = NULL")
-
-    if channel_group_mode is not None:
-        updates.append("channel_group_mode = ?")
-        values.append(channel_group_mode)
-
-    if channel_profile_ids is not None:
-        updates.append("channel_profile_ids = ?")
-        values.append(json.dumps(channel_profile_ids))
-    elif clear_channel_profile_ids:
-        updates.append("channel_profile_ids = NULL")
-
     if stream_timezone is not None:
         updates.append("stream_timezone = ?")
         values.append(stream_timezone)
@@ -717,7 +673,6 @@ def update_group(
         # When detaching from parent, copy inherited settings if child has none
         current = conn.execute(
             """SELECT parent_group_id, template_id, channel_start_number,
-                      channel_group_id, channel_group_mode, channel_profile_ids,
                       channel_assignment_mode
                FROM event_epg_groups WHERE id = ?""",
             (group_id,),
@@ -726,8 +681,7 @@ def update_group(
         if current and current["parent_group_id"]:
             # Get parent's settings to copy
             parent = conn.execute(
-                """SELECT template_id, channel_start_number, channel_group_id,
-                          channel_group_mode, channel_profile_ids,
+                """SELECT template_id, channel_start_number,
                           channel_assignment_mode
                    FROM event_epg_groups WHERE id = ?""",
                 (current["parent_group_id"],),
@@ -743,18 +697,6 @@ def update_group(
                 if current["channel_start_number"] is None and parent["channel_start_number"]:
                     updates.append("channel_start_number = ?")
                     values.append(parent["channel_start_number"])
-
-                if current["channel_group_id"] is None and parent["channel_group_id"]:
-                    updates.append("channel_group_id = ?")
-                    values.append(parent["channel_group_id"])
-
-                if current["channel_group_mode"] is None and parent["channel_group_mode"]:
-                    updates.append("channel_group_mode = ?")
-                    values.append(parent["channel_group_mode"])
-
-                if current["channel_profile_ids"] is None and parent["channel_profile_ids"]:
-                    updates.append("channel_profile_ids = ?")
-                    values.append(parent["channel_profile_ids"])
 
                 # Copy channel assignment mode
                 if parent["channel_assignment_mode"]:

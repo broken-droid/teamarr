@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
-import { Select } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -18,7 +17,6 @@ import {
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { Loader2, Tv, Eye, Plus, AlertCircle, Info, Check } from "lucide-react"
-import { ChannelProfileSelector } from "@/components/ChannelProfileSelector"
 import { StreamTimezoneSelector } from "@/components/StreamTimezoneSelector"
 
 // Types
@@ -53,11 +51,6 @@ interface SelectedGroup {
   stream_count?: number
 }
 
-interface ChannelGroup {
-  id: number
-  name: string
-}
-
 interface BulkCreateResponse {
   total_created: number
   total_failed: number
@@ -85,10 +78,6 @@ async function fetchEnabledGroups(): Promise<EnabledGroup[]> {
   return response.groups
 }
 
-async function fetchChannelGroups(): Promise<ChannelGroup[]> {
-  return api.get("/dispatcharr/channel-groups")
-}
-
 export function EventGroupImport() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -101,9 +90,6 @@ export function EventGroupImport() {
 
   // Bulk import modal state
   const [showBulkModal, setShowBulkModal] = useState(false)
-  const [bulkChannelGroupId, setBulkChannelGroupId] = useState<number | null>(null)
-  const [bulkChannelGroupMode, setBulkChannelGroupMode] = useState<string>('static')
-  const [bulkChannelProfileIds, setBulkChannelProfileIds] = useState<(number | string)[]>([])
   const [bulkStreamTimezone, setBulkStreamTimezone] = useState<string | null>(null)
   const [bulkEnabled, setBulkEnabled] = useState(true)
   const [bulkImporting, setBulkImporting] = useState(false)
@@ -129,11 +115,6 @@ export function EventGroupImport() {
     queryKey: ["dispatcharr-group-streams", selectedAccount?.id, previewGroup?.id],
     queryFn: () => fetchGroupStreams(selectedAccount!.id, previewGroup!.id),
     enabled: !!selectedAccount && !!previewGroup,
-  })
-
-  const channelGroupsQuery = useQuery({
-    queryKey: ["dispatcharr-channel-groups"],
-    queryFn: fetchChannelGroups,
   })
 
   // Get set of already-enabled (account_id, group_id) pairs
@@ -239,9 +220,6 @@ export function EventGroupImport() {
           m3u_account_name: g.m3u_account_name,
         })),
         settings: {
-          channel_group_id: bulkChannelGroupMode === 'static' ? bulkChannelGroupId : null,
-          channel_group_mode: bulkChannelGroupMode,
-          channel_profile_ids: bulkChannelProfileIds.length > 0 ? bulkChannelProfileIds : null,
           stream_timezone: bulkStreamTimezone,
           enabled: bulkEnabled,
         },
@@ -268,9 +246,6 @@ export function EventGroupImport() {
 
   // Reset bulk modal state
   const openBulkModal = () => {
-    setBulkChannelGroupId(null)
-    setBulkChannelGroupMode('static')
-    setBulkChannelProfileIds([])
     setBulkStreamTimezone(null)
     setBulkEnabled(true)
     setShowBulkModal(true)
@@ -598,114 +573,6 @@ export function EventGroupImport() {
             <div className="space-y-4">
               <Label className="text-sm font-medium">Settings</Label>
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Channel Group</Label>
-                  <div className="space-y-2">
-                    {/* Static group option */}
-                    <div>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="bulk_channel_group_mode"
-                          checked={bulkChannelGroupMode === "static"}
-                          onChange={() => setBulkChannelGroupMode("static")}
-                          className="accent-primary"
-                        />
-                        <span className="text-sm">Existing group</span>
-                      </label>
-                      <div className={`mt-1 ml-6 ${bulkChannelGroupMode !== "static" ? "opacity-40 pointer-events-none" : ""}`}>
-                        <Select
-                          value={bulkChannelGroupId?.toString() ?? ""}
-                          onChange={(e) => setBulkChannelGroupId(e.target.value ? parseInt(e.target.value) : null)}
-                          disabled={bulkChannelGroupMode !== "static"}
-                        >
-                          <option value="">None</option>
-                          {(channelGroupsQuery.data ?? []).map((g) => (
-                            <option key={g.id} value={g.id}>{g.name}</option>
-                          ))}
-                        </Select>
-                      </div>
-                    </div>
-
-                    {/* Dynamic group options */}
-                    <div className="border rounded-md bg-muted/30">
-                      <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                        Dynamic Groups
-                      </div>
-                      <div className="divide-y">
-                        <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-accent">
-                          <input
-                            type="radio"
-                            name="bulk_channel_group_mode"
-                            checked={bulkChannelGroupMode === "{sport}"}
-                            onChange={() => {
-                              setBulkChannelGroupMode("{sport}")
-                              setBulkChannelGroupId(null)
-                            }}
-                            className="accent-primary"
-                          />
-                          <div className="flex-1">
-                            <code className="text-sm font-medium bg-muted px-1 rounded">{"{sport}"}</code>
-                            <p className="text-xs text-muted-foreground mt-0.5">Assign channels to a group by sport name (e.g., Basketball). Group created if it doesn't exist.</p>
-                          </div>
-                        </label>
-                        <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-accent">
-                          <input
-                            type="radio"
-                            name="bulk_channel_group_mode"
-                            checked={bulkChannelGroupMode === "{league}"}
-                            onChange={() => {
-                              setBulkChannelGroupMode("{league}")
-                              setBulkChannelGroupId(null)
-                            }}
-                            className="accent-primary"
-                          />
-                          <div className="flex-1">
-                            <code className="text-sm font-medium bg-muted px-1 rounded">{"{league}"}</code>
-                            <p className="text-xs text-muted-foreground mt-0.5">Assign channels to a group by league name (e.g., NBA, NFL). Group created if it doesn't exist.</p>
-                          </div>
-                        </label>
-                        <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-accent">
-                          <input
-                            type="radio"
-                            name="bulk_channel_group_mode"
-                            value="custom"
-                            checked={bulkChannelGroupMode !== "static" && bulkChannelGroupMode !== "{sport}" && bulkChannelGroupMode !== "{league}"}
-                            onChange={() => {
-                              setBulkChannelGroupMode("{sport} | {league}")
-                              setBulkChannelGroupId(null)
-                            }}
-                            className="accent-primary"
-                          />
-                          <div className="flex-1">
-                            <span className="text-sm font-medium">Custom</span>
-                            <p className="text-xs text-muted-foreground mt-0.5">Define a custom pattern with variables.</p>
-                          </div>
-                        </label>
-                        {bulkChannelGroupMode !== "static" && bulkChannelGroupMode !== "{sport}" && bulkChannelGroupMode !== "{league}" && (
-                          <div className="p-3 space-y-2">
-                            <Input
-                              value={bulkChannelGroupMode}
-                              onChange={(e) => setBulkChannelGroupMode(e.target.value)}
-                              placeholder="Sports | {sport} | {league}"
-                              className="font-mono text-sm"
-                            />
-                            <p className="text-xs text-muted-foreground">
-                              Available: <code className="bg-muted px-1 rounded">{"{sport}"}</code>, <code className="bg-muted px-1 rounded">{"{league}"}</code>
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Channel Profiles</Label>
-                  <ChannelProfileSelector
-                    selectedIds={bulkChannelProfileIds}
-                    onChange={setBulkChannelProfileIds}
-                  />
-                </div>
                 <div className="space-y-2">
                   <Label className="text-xs text-muted-foreground">Stream Timezone</Label>
                   <StreamTimezoneSelector

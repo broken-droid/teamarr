@@ -7,11 +7,10 @@ Provides REST API for:
 """
 
 import logging
-from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import Response
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from teamarr.database import get_db
 
@@ -23,35 +22,6 @@ router = APIRouter()
 # =============================================================================
 # PYDANTIC MODELS
 # =============================================================================
-
-
-def _validate_profile_ids(v: Any) -> list[str | int] | None:
-    """Validate channel_profile_ids accepts mixed int/str types.
-
-    Pydantic v2 union validation can fail on mixed types when the first
-    element is an int (it infers list[int] and rejects subsequent strings).
-    This validator explicitly handles the mixed case.
-    """
-    if v is None:
-        return None
-    if not isinstance(v, list):
-        return v
-    result: list[str | int] = []
-    for item in v:
-        if isinstance(item, int):
-            result.append(item)
-        elif isinstance(item, str):
-            # Keep wildcards as strings, convert numeric strings to int
-            if item in ("{sport}", "{league}"):
-                result.append(item)
-            elif item.isdigit():
-                result.append(int(item))
-            else:
-                result.append(item)
-        else:
-            # Let Pydantic handle invalid types
-            result.append(item)
-    return result
 
 
 class TeamFilterEntry(BaseModel):
@@ -91,10 +61,6 @@ class GroupCreate(BaseModel):
     parent_group_id: int | None = None
     template_id: int | None = None
     channel_start_number: int | None = Field(None, ge=1)
-    channel_group_id: int | None = None
-    channel_group_mode: str = "static"  # "static", "sport", "league"
-    channel_profile_ids: list[str | int] | None = None  # IDs or "{sport}", "{league}"
-
     stream_timezone: str | None = None  # Timezone for stream datetime parsing
     duplicate_event_handling: str = "consolidate"
     channel_assignment_mode: str = "auto"
@@ -137,11 +103,6 @@ class GroupCreate(BaseModel):
     # Deprecated: template_assignments now managed via subscription_templates
     template_assignments: list["GroupTemplateCreate"] | None = None
 
-    @field_validator("channel_profile_ids", mode="before")
-    @classmethod
-    def validate_profile_ids(cls, v: Any) -> list[str | int] | None:
-        return _validate_profile_ids(v)
-
 
 class GroupUpdate(BaseModel):
     """Update event EPG group request."""
@@ -155,10 +116,6 @@ class GroupUpdate(BaseModel):
     parent_group_id: int | None = None
     template_id: int | None = None
     channel_start_number: int | None = None
-    channel_group_id: int | None = None
-    channel_group_mode: str | None = None  # "static", "sport", "league"
-    channel_profile_ids: list[str | int] | None = None  # IDs or "{sport}", "{league}"
-
     stream_timezone: str | None = None  # Timezone for stream datetime parsing
     duplicate_event_handling: str | None = None
     channel_assignment_mode: str | None = None
@@ -204,9 +161,6 @@ class GroupUpdate(BaseModel):
     clear_parent_group_id: bool = False
     clear_template: bool = False
     clear_channel_start_number: bool = False
-    clear_channel_group_id: bool = False
-    clear_channel_profile_ids: bool = False
-
     clear_stream_timezone: bool = False
     clear_m3u_group_id: bool = False
     clear_m3u_group_name: bool = False
@@ -228,11 +182,6 @@ class GroupUpdate(BaseModel):
     clear_subscription_soccer_mode: bool = False
     clear_subscription_soccer_followed_teams: bool = False
 
-    @field_validator("channel_profile_ids", mode="before")
-    @classmethod
-    def validate_profile_ids(cls, v: Any) -> list[str | int] | None:
-        return _validate_profile_ids(v)
-
 
 class GroupResponse(BaseModel):
     """Event EPG group response."""
@@ -249,10 +198,6 @@ class GroupResponse(BaseModel):
     template_id: int | None = None
     group_template_count: int = 0
     channel_start_number: int | None = None
-    channel_group_id: int | None = None
-    channel_group_mode: str = "static"  # "static", "sport", "league"
-    channel_profile_ids: list[str | int] | None = None  # null = use default, [] = no profiles
-
     stream_timezone: str | None = None  # Timezone for stream datetime parsing
     duplicate_event_handling: str = "consolidate"
     channel_assignment_mode: str = "auto"
@@ -314,12 +259,6 @@ class GroupResponse(BaseModel):
     updated_at: str | None = None
     channel_count: int | None = None
 
-    @field_validator("channel_profile_ids", mode="before")
-    @classmethod
-    def validate_profile_ids(cls, v: Any) -> list[str | int] | None:
-        # Preserve None (use default) vs [] (no profiles) distinction
-        return _validate_profile_ids(v)
-
 
 class GroupListResponse(BaseModel):
     """List of event EPG groups."""
@@ -380,20 +319,11 @@ class BulkGroupSettings(BaseModel):
     soccer_followed_teams: list[SoccerFollowedTeam] | None = None
     template_id: int | None = None
     template_assignments: list[BulkTemplateAssignmentCreate] | None = None
-    channel_group_id: int | None = None
-    channel_group_mode: str = "static"  # "static", "sport", "league"
-    channel_profile_ids: list[str | int] | None = None  # IDs or "{sport}", "{league}"
-
     stream_timezone: str | None = None  # Timezone for stream datetime parsing
     duplicate_event_handling: str = "consolidate"
     channel_sort_order: str = "time"
     overlap_handling: str = "add_stream"
     enabled: bool = True
-
-    @field_validator("channel_profile_ids", mode="before")
-    @classmethod
-    def validate_profile_ids(cls, v: Any) -> list[str | int] | None:
-        return _validate_profile_ids(v)
 
 
 class BulkGroupCreateRequest(BaseModel):
@@ -437,10 +367,6 @@ class BulkGroupUpdateRequest(BaseModel):
     soccer_mode: str | None = None  # 'all', 'teams', 'manual', or None (non-soccer)
     soccer_followed_teams: list[SoccerFollowedTeam] | None = None  # Teams to follow
     template_id: int | None = None
-    channel_group_id: int | None = None
-    channel_group_mode: str | None = None
-    channel_profile_ids: list[str | int] | None = None
-
     stream_timezone: str | None = None  # Timezone for stream datetime parsing
     duplicate_event_handling: str | None = None
     channel_sort_order: str | None = None
@@ -449,9 +375,6 @@ class BulkGroupUpdateRequest(BaseModel):
 
     # Clear flags to explicitly set fields to NULL
     clear_template: bool = False
-    clear_channel_group_id: bool = False
-    clear_channel_profile_ids: bool = False
-
     clear_stream_timezone: bool = False
     clear_soccer_mode: bool = False
     clear_soccer_followed_teams: bool = False
@@ -462,11 +385,6 @@ class BulkGroupUpdateRequest(BaseModel):
     clear_subscription_leagues: bool = False
     clear_subscription_soccer_mode: bool = False
     clear_subscription_soccer_followed_teams: bool = False
-
-    @field_validator("channel_profile_ids", mode="before")
-    @classmethod
-    def validate_profile_ids(cls, v: Any) -> list[str | int] | None:
-        return _validate_profile_ids(v)
 
 
 class ClearCacheRequest(BaseModel):
@@ -491,23 +409,6 @@ class ClearCacheResponse(BaseModel):
     entries_cleared: int | None = None  # For single group
     total_cleared: int | None = None  # For bulk
     by_group: list[ClearCacheGroupResult] | None = None  # For bulk
-    # Fields to update (only non-None values are applied)
-    leagues: list[str] | None = None
-    template_id: int | None = None
-    channel_group_id: int | None = None
-    channel_group_mode: str | None = None  # "static", "sport", "league"
-    channel_profile_ids: list[str | int] | None = None  # IDs or "{sport}", "{league}"
-    channel_sort_order: str | None = None
-    overlap_handling: str | None = None
-    # Clear flags for nullable fields
-    clear_template: bool = False
-    clear_channel_group_id: bool = False
-    clear_channel_profile_ids: bool = False
-
-    @field_validator("channel_profile_ids", mode="before")
-    @classmethod
-    def validate_profile_ids(cls, v: Any) -> list[str | int] | None:
-        return _validate_profile_ids(v)
 
 
 class BulkGroupUpdateResult(BaseModel):
@@ -627,9 +528,6 @@ def list_groups(
                 template_id=g.template_id,
                 group_template_count=group_template_counts.get(g.id, 0),
                 channel_start_number=g.channel_start_number,
-                channel_group_id=g.channel_group_id,
-                channel_group_mode=g.channel_group_mode,
-                channel_profile_ids=g.channel_profile_ids,
                 duplicate_event_handling=g.duplicate_event_handling,
                 channel_assignment_mode=g.channel_assignment_mode,
                 sort_order=g.sort_order,
@@ -731,9 +629,6 @@ def create_group(request: GroupCreate):
             parent_group_id=None,  # Hardcoded — hierarchy removed in v58
             template_id=request.template_id,
             channel_start_number=None,  # Deprecated — global mode in v59
-            channel_group_id=request.channel_group_id,
-            channel_group_mode=request.channel_group_mode,
-            channel_profile_ids=request.channel_profile_ids,
             stream_timezone=request.stream_timezone,
             duplicate_event_handling="consolidate",  # Deprecated — global mode in v59
             channel_assignment_mode="auto",  # Deprecated — global mode in v59
@@ -807,9 +702,6 @@ def create_group(request: GroupCreate):
         parent_group_id=group.parent_group_id,
         template_id=group.template_id,
         channel_start_number=group.channel_start_number,
-        channel_group_id=group.channel_group_id,
-        channel_group_mode=group.channel_group_mode,
-        channel_profile_ids=group.channel_profile_ids,
         stream_timezone=group.stream_timezone,
         duplicate_event_handling=group.duplicate_event_handling,
         channel_assignment_mode=group.channel_assignment_mode,
@@ -928,9 +820,6 @@ def create_groups_bulk(request: BulkGroupCreateRequest):
                     ),
                     group_mode="multi",  # Hardcoded — hierarchy removed in v58
                     template_id=legacy_template_id,
-                    channel_group_id=request.settings.channel_group_id,
-                    channel_group_mode=request.settings.channel_group_mode,
-                    channel_profile_ids=request.settings.channel_profile_ids,
                     stream_timezone=request.settings.stream_timezone,
                     duplicate_event_handling=request.settings.duplicate_event_handling,
                     channel_sort_order=request.settings.channel_sort_order,
@@ -1032,17 +921,12 @@ def update_groups_bulk(request: BulkGroupUpdateRequest):
                     if request.soccer_followed_teams
                     else None,
                     template_id=request.template_id,
-                    channel_group_id=request.channel_group_id,
-                    channel_group_mode=request.channel_group_mode,
-                    channel_profile_ids=request.channel_profile_ids,
                     stream_timezone=request.stream_timezone,
                     duplicate_event_handling=request.duplicate_event_handling,
                     channel_sort_order=request.channel_sort_order,
                     overlap_handling=request.overlap_handling,
                     enabled=request.enabled,
                     clear_template=request.clear_template,
-                    clear_channel_group_id=request.clear_channel_group_id,
-                    clear_channel_profile_ids=request.clear_channel_profile_ids,
                     clear_stream_timezone=request.clear_stream_timezone,
                     clear_soccer_mode=request.clear_soccer_mode,
                     clear_soccer_followed_teams=request.clear_soccer_followed_teams,
@@ -1170,9 +1054,6 @@ def get_group_by_id(group_id: int):
         parent_group_id=group.parent_group_id,
         template_id=group.template_id,
         channel_start_number=group.channel_start_number,
-        channel_group_id=group.channel_group_id,
-        channel_group_mode=group.channel_group_mode,
-        channel_profile_ids=group.channel_profile_ids,
         stream_timezone=group.stream_timezone,
         duplicate_event_handling=group.duplicate_event_handling,
         channel_assignment_mode=group.channel_assignment_mode,
@@ -1289,9 +1170,6 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
                 parent_group_id=None,  # Hardcoded — hierarchy removed in v58
                 template_id=request.template_id,
                 channel_start_number=request.channel_start_number,
-                channel_group_id=request.channel_group_id,
-                channel_group_mode=request.channel_group_mode,
-                channel_profile_ids=request.channel_profile_ids,
                 stream_timezone=request.stream_timezone,
                 duplicate_event_handling=None,  # Deprecated — global consolidation in v59
                 channel_assignment_mode=None,  # Deprecated — global mode in v59
@@ -1332,8 +1210,6 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
                 clear_parent_group_id=request.clear_parent_group_id,
                 clear_template=request.clear_template,
                 clear_channel_start_number=request.clear_channel_start_number,
-                clear_channel_group_id=request.clear_channel_group_id,
-                clear_channel_profile_ids=request.clear_channel_profile_ids,
                 clear_stream_timezone=request.clear_stream_timezone,
                 clear_m3u_group_id=request.clear_m3u_group_id,
                 clear_m3u_group_name=request.clear_m3u_group_name,
@@ -1392,9 +1268,6 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
         parent_group_id=group.parent_group_id,
         template_id=group.template_id,
         channel_start_number=group.channel_start_number,
-        channel_group_id=group.channel_group_id,
-        channel_group_mode=group.channel_group_mode,
-        channel_profile_ids=group.channel_profile_ids,
         stream_timezone=group.stream_timezone,
         duplicate_event_handling=group.duplicate_event_handling,
         channel_assignment_mode=group.channel_assignment_mode,

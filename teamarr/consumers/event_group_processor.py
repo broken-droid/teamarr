@@ -2032,12 +2032,10 @@ class EventGroupProcessor:
         lifecycle_service.compute_external_occupied()
 
         # Build group config dict
-        # Per-group channel settings deprecated in v59 — using global settings
+        # Per-group profiles/channel groups removed — now resolved from
+        # per-league subscription config → global defaults
         group_config = {
             "id": group.id,
-            "channel_group_id": group.channel_group_id,
-            "channel_group_mode": group.channel_group_mode,  # "static", "sport", or "league"
-            "channel_profile_ids": group.channel_profile_ids,
             "m3u_account_id": group.m3u_account_id,
             "m3u_account_name": group.m3u_account_name,
         }

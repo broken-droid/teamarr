@@ -230,13 +230,18 @@ class TestProfileSentinelUpdateFailure:
         service._dynamic_resolver = MagicMock()
         service._dynamic_resolver.resolve_channel_profiles.return_value = [0]
 
+        mock_settings = MagicMock()
+        mock_settings.default_channel_profile_ids = None
+
         with patch(
             "teamarr.database.channels.update_managed_channel"
-        ) as mock_update_db:
+        ) as mock_update_db, patch(
+            "teamarr.database.settings.get_dispatcharr_settings",
+            return_value=mock_settings,
+        ):
             service._sync_channel_profiles(
                 conn=MagicMock(),
                 existing=existing,
-                group_config={"channel_profile_ids": None},
                 event_sport="football",
                 event_league="nfl",
                 changes_made=changes_made,
@@ -328,11 +333,16 @@ class TestProfileSelfHealing:
         service._dynamic_resolver = MagicMock()
         service._dynamic_resolver.resolve_channel_profiles.return_value = [0]
 
-        with patch("teamarr.database.channels.update_managed_channel"):
+        mock_settings = MagicMock()
+        mock_settings.default_channel_profile_ids = None
+
+        with patch("teamarr.database.channels.update_managed_channel"), patch(
+            "teamarr.database.settings.get_dispatcharr_settings",
+            return_value=mock_settings,
+        ):
             service._sync_channel_profiles(
                 conn=MagicMock(),
                 existing=existing,
-                group_config={"channel_profile_ids": None},
                 event_sport="football",
                 event_league="nfl",
                 changes_made=changes_made,
@@ -349,7 +359,7 @@ class TestProfileSelfHealing:
 
         Uses profile ID 1 (not 0) because _parse_profile_ids filters falsy
         values with ``if x``, so 0 gets dropped.  Also sets a non-None
-        channel_profile_ids in group_config so the dynamic resolver runs
+        default_channel_profile_ids so the dynamic resolver runs
         (None causes a [0] fallback, bypassing the resolver entirely).
         """
         cm = MagicMock()
@@ -362,13 +372,18 @@ class TestProfileSelfHealing:
         service._dynamic_resolver = MagicMock()
         service._dynamic_resolver.resolve_channel_profiles.return_value = [1]
 
+        mock_settings = MagicMock()
+        mock_settings.default_channel_profile_ids = [1]
+
         with patch(
             "teamarr.database.channels.update_managed_channel"
-        ) as mock_update_db:
+        ) as mock_update_db, patch(
+            "teamarr.database.settings.get_dispatcharr_settings",
+            return_value=mock_settings,
+        ):
             service._sync_channel_profiles(
                 conn=MagicMock(),
                 existing=existing,
-                group_config={"channel_profile_ids": [1]},
                 event_sport="football",
                 event_league="nfl",
                 changes_made=changes_made,
