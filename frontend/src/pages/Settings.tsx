@@ -35,7 +35,6 @@ import { StreamProfileSelector } from "@/components/StreamProfileSelector"
 import { useGenerationProgress } from "@/contexts/GenerationContext"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
@@ -53,8 +52,6 @@ import {
   useUpdateEPGSettings,
   useUpdateDurationSettings,
   useUpdateDisplaySettings,
-  useTeamFilterSettings,
-  useUpdateTeamFilterSettings,
   useExceptionKeywords,
   useCreateExceptionKeyword,
   useDeleteExceptionKeyword,
@@ -68,7 +65,6 @@ import {
   useUpsertLeagueConfig,
   useDeleteLeagueConfig,
 } from "@/hooks/useSettings"
-import { TeamPicker } from "@/components/TeamPicker"
 import { SortPriorityManager } from "@/components/SortPriorityManager"
 import { StreamOrderingManager } from "@/components/StreamOrderingManager"
 import { getLeagues, getSports } from "@/api/teams"
@@ -93,7 +89,6 @@ import type {
   EPGSettings,
   DurationSettings,
   DisplaySettings,
-  TeamFilterSettings,
   ChannelNumberingSettings,
   UpdateCheckSettings,
   SubscriptionLeagueConfig,
@@ -863,10 +858,6 @@ export function Settings() {
   const createKeyword = useCreateExceptionKeyword()
   const deleteKeyword = useDeleteExceptionKeyword()
 
-  // Team filter settings
-  const { data: teamFilterData } = useTeamFilterSettings()
-  const updateTeamFilter = useUpdateTeamFilterSettings()
-
   // Channel numbering settings
   const { data: channelNumberingData } = useChannelNumberingSettings()
   const updateChannelNumbering = useUpdateChannelNumberingSettings()
@@ -903,13 +894,6 @@ export function Settings() {
   const [epg, setEPG] = useState<EPGSettings | null>(null)
   const [durations, setDurations] = useState<DurationSettings | null>(null)
   const [display, setDisplay] = useState<DisplaySettings | null>(null)
-  const [teamFilter, setTeamFilter] = useState<TeamFilterSettings>({
-    enabled: true,
-    include_teams: null,
-    exclude_teams: null,
-    mode: "include",
-    bypass_filter_for_playoffs: false,
-  })
   const [channelNumbering, setChannelNumbering] = useState<ChannelNumberingSettings>({
     global_channel_mode: "auto",
     league_channel_starts: {},
@@ -975,13 +959,6 @@ export function Settings() {
     }
   }, [settings])
 
-  // Sync team filter state when data loads
-  useEffect(() => {
-    if (teamFilterData) {
-      setTeamFilter(teamFilterData)
-    }
-  }, [teamFilterData])
-
   // Sync channel numbering state when data loads
   useEffect(() => {
     if (channelNumberingData) {
@@ -1017,12 +994,6 @@ export function Settings() {
       setSelectedProfileIds(displayIds)
     }
   }, [channelProfilesQuery.data, settings])
-
-  // Get league slugs for TeamPicker
-  const availableLeagues = useMemo(() =>
-    leaguesData?.leagues?.map(l => l.slug) ?? [],
-    [leaguesData]
-  )
 
   const handleSaveDispatcharr = async () => {
     try {
@@ -1668,137 +1639,6 @@ export function Settings() {
       </Card>
       )}
 
-      {/* Default Team Filter Section */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Default Team Filter</CardTitle>
-              <CardDescription>
-                Global team filter applied to all event groups that don't have their own filter.
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              <Label htmlFor="team-filter-enabled" className="text-sm">
-                {teamFilter.enabled ? "Enabled" : "Disabled"}
-              </Label>
-              <Switch
-                id="team-filter-enabled"
-                checked={teamFilter.enabled}
-                onCheckedChange={(checked) => {
-                  setTeamFilter({ ...teamFilter, enabled: checked })
-                }}
-              />
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Show filter config when teams are selected OR always show to allow adding */}
-          {/* Mode selector */}
-          <div className="flex items-center gap-4">
-            <Label>Filter Mode:</Label>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="default-team-filter-mode"
-                  value="include"
-                  checked={teamFilter.mode === "include"}
-                  onChange={() => setTeamFilter({ ...teamFilter, mode: "include" })}
-                  className="accent-primary"
-                />
-                <span className="text-sm">Include only selected teams</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="default-team-filter-mode"
-                  value="exclude"
-                  checked={teamFilter.mode === "exclude"}
-                  onChange={() => setTeamFilter({ ...teamFilter, mode: "exclude" })}
-                  className="accent-primary"
-                />
-                <span className="text-sm">Exclude selected teams</span>
-              </label>
-            </div>
-          </div>
-
-          {/* TeamPicker */}
-          <TeamPicker
-            leagues={availableLeagues}
-            selectedTeams={
-              teamFilter.mode === "include"
-                ? (teamFilter.include_teams ?? [])
-                : (teamFilter.exclude_teams ?? [])
-            }
-            onSelectionChange={(teams) => {
-              if (teamFilter.mode === "include") {
-                setTeamFilter({ ...teamFilter, include_teams: teams, exclude_teams: [] })  // Send [] to clear
-              } else {
-                setTeamFilter({ ...teamFilter, exclude_teams: teams, include_teams: [] })  // Send [] to clear
-              }
-            }}
-            placeholder="Search teams to add to default filter..."
-          />
-
-          {/* Playoff bypass option */}
-          <label className="flex items-center gap-2 cursor-pointer py-2">
-            <Checkbox
-              checked={teamFilter.bypass_filter_for_playoffs}
-              onCheckedChange={(checked) =>
-                setTeamFilter({ ...teamFilter, bypass_filter_for_playoffs: !!checked })
-              }
-            />
-            <span className="text-sm">
-              Include all playoff games (bypass team filter for postseason events)
-            </span>
-          </label>
-
-          {/* Status message and Save button */}
-          <div className="flex justify-between items-center">
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">
-                {!teamFilter.enabled
-                  ? "Team filtering is disabled. All events will be matched."
-                  : !(teamFilter.include_teams?.length || teamFilter.exclude_teams?.length)
-                    ? "No teams selected. All events will be matched."
-                    : teamFilter.mode === "include"
-                      ? `Only events involving ${teamFilter.include_teams?.length} selected team(s) will be matched.`
-                      : `Events involving ${teamFilter.exclude_teams?.length} selected team(s) will be excluded.`}
-              </p>
-              {teamFilter.enabled && (teamFilter.include_teams?.length || teamFilter.exclude_teams?.length) ? (
-                <p className="text-xs text-muted-foreground italic">
-                  Filter only applies to leagues where you've made selections.
-                </p>
-              ) : null}
-            </div>
-            <Button
-              onClick={() => {
-                updateTeamFilter.mutate({
-                  enabled: teamFilter.enabled,
-                  include_teams: teamFilter.include_teams,
-                  exclude_teams: teamFilter.exclude_teams,
-                  mode: teamFilter.mode,
-                  clear_include_teams: teamFilter.mode === "exclude" || !teamFilter.include_teams?.length,
-                  clear_exclude_teams: teamFilter.mode === "include" || !teamFilter.exclude_teams?.length,
-                  bypass_filter_for_playoffs: teamFilter.bypass_filter_for_playoffs,
-                }, {
-                  onSuccess: () => toast.success("Default team filter saved"),
-                  onError: () => toast.error("Failed to save team filter"),
-                })
-              }}
-              disabled={updateTeamFilter.isPending}
-            >
-              {updateTeamFilter.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <Save className="h-4 w-4 mr-2" />
-              )}
-              Save Default Filter
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
       </>
       )}
 

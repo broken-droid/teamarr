@@ -551,6 +551,7 @@ def update_group(
     include_teams: list[dict] | None = None,
     exclude_teams: list[dict] | None = None,
     team_filter_mode: str | None = None,
+    bypass_filter_for_playoffs: bool | None = None,
     # Multi-sport enhancements (Phase 3)
     channel_sort_order: str | None = None,
     overlap_handling: str | None = None,
@@ -575,6 +576,7 @@ def update_group(
     clear_custom_regex_event_name: bool = False,
     clear_include_teams: bool = False,
     clear_exclude_teams: bool = False,
+    clear_bypass_filter_for_playoffs: bool = False,
     clear_soccer_mode: bool = False,
     clear_soccer_followed_teams: bool = False,
     # Per-group subscription overrides (NULL = inherit global)
@@ -843,6 +845,12 @@ def update_group(
     if team_filter_mode is not None:
         updates.append("team_filter_mode = ?")
         values.append(team_filter_mode)
+
+    if bypass_filter_for_playoffs is not None:
+        updates.append("bypass_filter_for_playoffs = ?")
+        values.append(int(bypass_filter_for_playoffs))
+    elif clear_bypass_filter_for_playoffs:
+        updates.append("bypass_filter_for_playoffs = NULL")
 
     # Multi-sport enhancements (Phase 3)
     if channel_sort_order is not None:

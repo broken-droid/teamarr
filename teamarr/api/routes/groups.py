@@ -373,11 +373,20 @@ class BulkGroupUpdateRequest(BaseModel):
     overlap_handling: str | None = None
     enabled: bool | None = None
 
+    # Team filtering
+    include_teams: list[TeamFilterEntry] | None = None
+    exclude_teams: list[TeamFilterEntry] | None = None
+    team_filter_mode: str | None = None  # 'include' or 'exclude'
+    bypass_filter_for_playoffs: bool | None = None
+
     # Clear flags to explicitly set fields to NULL
     clear_template: bool = False
     clear_stream_timezone: bool = False
     clear_soccer_mode: bool = False
     clear_soccer_followed_teams: bool = False
+    clear_include_teams: bool = False
+    clear_exclude_teams: bool = False
+    clear_bypass_filter_for_playoffs: bool = False
     # Per-group subscription overrides
     subscription_leagues: list[str] | None = None
     subscription_soccer_mode: str | None = None
@@ -930,6 +939,19 @@ def update_groups_bulk(request: BulkGroupUpdateRequest):
                     clear_stream_timezone=request.clear_stream_timezone,
                     clear_soccer_mode=request.clear_soccer_mode,
                     clear_soccer_followed_teams=request.clear_soccer_followed_teams,
+                    # Team filtering
+                    include_teams=[t.model_dump() for t in request.include_teams]
+                    if request.include_teams
+                    else None,
+                    exclude_teams=[t.model_dump() for t in request.exclude_teams]
+                    if request.exclude_teams
+                    else None,
+                    team_filter_mode=request.team_filter_mode,
+                    bypass_filter_for_playoffs=request.bypass_filter_for_playoffs,
+                    clear_include_teams=request.clear_include_teams,
+                    clear_exclude_teams=request.clear_exclude_teams,
+                    clear_bypass_filter_for_playoffs=request.clear_bypass_filter_for_playoffs,
+                    # Per-group subscription overrides
                     subscription_leagues=request.subscription_leagues,
                     subscription_soccer_mode=request.subscription_soccer_mode,
                     subscription_soccer_followed_teams=(

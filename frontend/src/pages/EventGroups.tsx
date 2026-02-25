@@ -51,10 +51,12 @@ import {
   usePreviewGroup,
 
 } from "@/hooks/useGroups"
-import type { EventGroup, PreviewGroupResponse } from "@/api/types"
+import type { EventGroup, PreviewGroupResponse, TeamFilterEntry } from "@/api/types"
 import { getLeagues } from "@/api/teams"
 import { StreamTimezoneSelector } from "@/components/StreamTimezoneSelector"
-import { SubscribedSports } from "@/components/SubscribedSports"
+import { TeamPicker } from "@/components/TeamPicker"
+import { GlobalDefaults } from "@/components/GlobalDefaults"
+import { Label } from "@/components/ui/label"
 import { getLeagueDisplayName } from "@/lib/utils"
 
 // Helper to get display name (prefer display_name over name)
@@ -65,6 +67,7 @@ export function EventGroups() {
   const { data, isLoading, error, refetch } = useGroups(true)
   const { data: leaguesResponse } = useQuery({ queryKey: ["leagues"], queryFn: () => getLeagues() })
   const cachedLeagues = leaguesResponse?.leagues
+  const allLeagueSlugs = useMemo(() => cachedLeagues?.map(l => l.slug) ?? [], [cachedLeagues])
   const deleteMutation = useDeleteGroup()
   const toggleMutation = useToggleGroup()
   const bulkUpdateMutation = useBulkUpdateGroups()
@@ -94,6 +97,12 @@ export function EventGroups() {
   const [bulkEditStreamTimezoneEnabled, setBulkEditStreamTimezoneEnabled] = useState(false)
   const [bulkEditStreamTimezone, setBulkEditStreamTimezone] = useState<string | null>(null)
   const [bulkEditClearStreamTimezone, setBulkEditClearStreamTimezone] = useState(false)
+  // Team filter bulk edit state
+  const [bulkEditTeamFilterEnabled, setBulkEditTeamFilterEnabled] = useState(false)
+  const [bulkEditTeamFilterAction, setBulkEditTeamFilterAction] = useState<"set" | "clear">("set")
+  const [bulkEditTeamFilterMode, setBulkEditTeamFilterMode] = useState<"include" | "exclude">("include")
+  const [bulkEditTeamFilterTeams, setBulkEditTeamFilterTeams] = useState<TeamFilterEntry[]>([])
+  const [bulkEditBypassPlayoffs, setBulkEditBypassPlayoffs] = useState(false)
   // Column sorting state
   type SortColumn = "name" | "matched" | "status" | null
   type SortDirection = "asc" | "desc"
@@ -343,27 +352,47 @@ export function EventGroups() {
     setBulkEditStreamTimezoneEnabled(false)
     setBulkEditStreamTimezone(null)
     setBulkEditClearStreamTimezone(false)
+    setBulkEditTeamFilterEnabled(false)
+    setBulkEditTeamFilterAction("set")
+    setBulkEditTeamFilterMode("include")
+    setBulkEditTeamFilterTeams([])
+    setBulkEditBypassPlayoffs(false)
   }
 
   const handleBulkEdit = async () => {
     const ids = Array.from(selectedIds)
 
     // Build request with only enabled fields
-    const request: {
-      group_ids: number[]
-      stream_timezone?: string | null
-      clear_stream_timezone?: boolean
-    } = { group_ids: ids }
+    const request: Record<string, unknown> & { group_ids: number[] } = { group_ids: ids }
 
     if (bulkEditStreamTimezoneEnabled) {
       if (bulkEditClearStreamTimezone) {
-        // Reset to auto-detect from stream
         request.clear_stream_timezone = true
       } else if (bulkEditStreamTimezone) {
-        // Specific timezone selected
         request.stream_timezone = bulkEditStreamTimezone
       }
     }
+
+    if (bulkEditTeamFilterEnabled) {
+      if (bulkEditTeamFilterAction === "clear") {
+        // Reset to global default
+        request.clear_include_teams = true
+        request.clear_exclude_teams = true
+        request.clear_bypass_filter_for_playoffs = true
+      } else {
+        // Set custom filter
+        request.team_filter_mode = bulkEditTeamFilterMode
+        request.bypass_filter_for_playoffs = bulkEditBypassPlayoffs
+        if (bulkEditTeamFilterMode === "include") {
+          request.include_teams = bulkEditTeamFilterTeams
+          request.clear_exclude_teams = true
+        } else {
+          request.exclude_teams = bulkEditTeamFilterTeams
+          request.clear_include_teams = true
+        }
+      }
+    }
+
     try {
       const result = await bulkUpdateMutation.mutateAsync(request)
       if (result.total_failed > 0) {
@@ -427,7 +456,7 @@ export function EventGroups() {
       </div>
 
       {/* Subscribed Sports — global league/soccer/template management */}
-      <SubscribedSports />
+      <GlobalDefaults />
 
       {/* Stats Tiles - V1 Style: Grid with 4 equal columns filling width */}
       {data?.groups && data.groups.length > 0 && (
@@ -992,6 +1021,92 @@ export function EventGroups() {
               )}
             </div>
 
+            {/* Team Filter */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={bulkEditTeamFilterEnabled}
+                  onCheckedChange={(checked) => setBulkEditTeamFilterEnabled(!!checked)}
+                />
+                <span className="text-sm font-medium">Team Filter</span>
+              </label>
+              {bulkEditTeamFilterEnabled && (
+                <div className="space-y-3 pl-6">
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="bulk-team-filter-action"
+                        checked={bulkEditTeamFilterAction === "set"}
+                        onChange={() => setBulkEditTeamFilterAction("set")}
+                        className="accent-primary"
+                      />
+                      <span className="text-sm">Set custom filter</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="bulk-team-filter-action"
+                        checked={bulkEditTeamFilterAction === "clear"}
+                        onChange={() => setBulkEditTeamFilterAction("clear")}
+                        className="accent-primary"
+                      />
+                      <span className="text-sm">Reset to global default</span>
+                    </label>
+                  </div>
+
+                  {bulkEditTeamFilterAction === "set" && (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-4">
+                        <Label>Mode:</Label>
+                        <div className="flex gap-4">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="bulk-team-filter-mode"
+                              checked={bulkEditTeamFilterMode === "include"}
+                              onChange={() => setBulkEditTeamFilterMode("include")}
+                              className="accent-primary"
+                            />
+                            <span className="text-sm">Include only</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="bulk-team-filter-mode"
+                              checked={bulkEditTeamFilterMode === "exclude"}
+                              onChange={() => setBulkEditTeamFilterMode("exclude")}
+                              className="accent-primary"
+                            />
+                            <span className="text-sm">Exclude</span>
+                          </label>
+                        </div>
+                      </div>
+                      <TeamPicker
+                        leagues={allLeagueSlugs}
+                        selectedTeams={bulkEditTeamFilterTeams}
+                        onSelectionChange={setBulkEditTeamFilterTeams}
+                        placeholder="Search teams..."
+                      />
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox
+                          checked={bulkEditBypassPlayoffs}
+                          onCheckedChange={(checked) => setBulkEditBypassPlayoffs(!!checked)}
+                        />
+                        <span className="text-sm">Include all playoff games</span>
+                      </label>
+                    </div>
+                  )}
+
+                  {bulkEditTeamFilterAction === "clear" && (
+                    <p className="text-xs text-muted-foreground">
+                      Removes per-group team filter overrides. Groups will use the global default filter.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowBulkEdit(false)}>
@@ -999,7 +1114,7 @@ export function EventGroups() {
             </Button>
             <Button
               onClick={handleBulkEdit}
-              disabled={bulkUpdateMutation.isPending || !bulkEditStreamTimezoneEnabled}
+              disabled={bulkUpdateMutation.isPending || !(bulkEditStreamTimezoneEnabled || bulkEditTeamFilterEnabled)}
             >
               {bulkUpdateMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Apply to {selectedIds.size} groups

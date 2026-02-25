@@ -176,6 +176,15 @@ export interface BulkGroupUpdateRequest {
   template_id?: number | null
   stream_timezone?: string | null  // IANA timezone for interpreting stream dates
   clear_template?: boolean
+  clear_stream_timezone?: boolean
+  // Team filtering
+  include_teams?: TeamFilterEntry[] | null
+  exclude_teams?: TeamFilterEntry[] | null
+  team_filter_mode?: 'include' | 'exclude'
+  bypass_filter_for_playoffs?: boolean | null
+  clear_include_teams?: boolean
+  clear_exclude_teams?: boolean
+  clear_bypass_filter_for_playoffs?: boolean
   // Per-group subscription overrides
   subscription_leagues?: string[] | null
   subscription_soccer_mode?: 'all' | 'teams' | 'manual' | null

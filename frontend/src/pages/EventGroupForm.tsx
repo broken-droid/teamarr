@@ -875,7 +875,7 @@ export function EventGroupForm() {
                       }}
                     />
                     <span className="text-sm font-normal">
-                      Use default team filter (set in Event Groups tab in Settings)
+                      Use default team filter (set in Global Defaults above)
                     </span>
                   </label>
 
