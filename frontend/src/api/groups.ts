@@ -78,12 +78,6 @@ export async function getRawStreams(
   return api.get(`/groups/${groupId}/streams/raw`)
 }
 
-export async function reorderGroups(
-  groups: { group_id: number; sort_order: number }[]
-): Promise<{ success: boolean; updated_count: number; message: string }> {
-  return api.post("/groups/reorder", { groups })
-}
-
 export async function bulkUpdateGroups(
   data: BulkGroupUpdateRequest
 ): Promise<BulkGroupUpdateResponse> {

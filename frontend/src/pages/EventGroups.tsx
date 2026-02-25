@@ -11,7 +11,7 @@ import {
   X,
   Check,
   AlertCircle,
-  GripVertical,
+
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
@@ -49,7 +49,7 @@ import {
   useDeleteGroup,
   useToggleGroup,
   usePreviewGroup,
-  useReorderGroups,
+
 } from "@/hooks/useGroups"
 import type { EventGroup, PreviewGroupResponse } from "@/api/types"
 import { getLeagues } from "@/api/teams"
@@ -69,12 +69,8 @@ export function EventGroups() {
   const toggleMutation = useToggleGroup()
   const bulkUpdateMutation = useBulkUpdateGroups()
   const previewMutation = usePreviewGroup()
-  const reorderMutation = useReorderGroups()
   const clearCacheMutation = useClearGroupMatchCache()
   const clearCachesBulkMutation = useClearGroupsMatchCache()
-
-  // Drag-and-drop state for AUTO groups
-  const [draggedGroupId, setDraggedGroupId] = useState<number | null>(null)
 
   // Preview modal state
   const [previewData, setPreviewData] = useState<PreviewGroupResponse | null>(null)
@@ -124,27 +120,16 @@ export function EventGroups() {
     )
   }
 
-  // Filter and sort groups by priority
-  const { autoGroups, filteredGroups } = useMemo(() => {
-    if (!data?.groups) return { autoGroups: [], filteredGroups: [] }
+  // Filter groups
+  const filteredGroups = useMemo(() => {
+    if (!data?.groups) return []
 
-    // Filter groups
-    const filtered = data.groups.filter((group) => {
+    return data.groups.filter((group) => {
       if (nameFilter && !group.name.toLowerCase().includes(nameFilter.toLowerCase())) return false
       if (statusFilter === "enabled" && !group.enabled) return false
       if (statusFilter === "disabled" && group.enabled) return false
       return true
     })
-
-    // Sort all groups by sort_order (drag-and-drop priority)
-    const sorted = filtered
-      .slice()
-      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-
-    return {
-      autoGroups: sorted,
-      filteredGroups: sorted,
-    }
   }, [data?.groups, nameFilter, statusFilter])
 
   // Apply column sorting when a column header is clicked
@@ -401,55 +386,6 @@ export function EventGroups() {
 
   const hasActiveFilters = nameFilter || statusFilter !== ""
 
-  // Drag-and-drop handlers for AUTO groups
-  const handleDragStart = (e: React.DragEvent, groupId: number) => {
-    setDraggedGroupId(groupId)
-    e.dataTransfer.effectAllowed = "move"
-  }
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = "move"
-  }
-
-  const handleDrop = async (e: React.DragEvent, targetGroupId: number) => {
-    e.preventDefault()
-    if (!draggedGroupId || draggedGroupId === targetGroupId) {
-      setDraggedGroupId(null)
-      return
-    }
-
-    // Find current positions
-    const draggedIndex = autoGroups.findIndex((g) => g.id === draggedGroupId)
-    const targetIndex = autoGroups.findIndex((g) => g.id === targetGroupId)
-
-    if (draggedIndex === -1 || targetIndex === -1) {
-      setDraggedGroupId(null)
-      return
-    }
-
-    // Build new order
-    const newOrder = [...autoGroups]
-    const [dragged] = newOrder.splice(draggedIndex, 1)
-    newOrder.splice(targetIndex, 0, dragged)
-
-    // Assign new sort_order values
-    const reorderData = newOrder.map((g, i) => ({ group_id: g.id, sort_order: i }))
-
-    try {
-      await reorderMutation.mutateAsync(reorderData)
-      toast.success("Group order updated")
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to reorder groups")
-    }
-
-    setDraggedGroupId(null)
-  }
-
-  const handleDragEnd = () => {
-    setDraggedGroupId(null)
-  }
-
   if (error) {
     return (
       <div className="space-y-4">
@@ -692,7 +628,6 @@ export function EventGroups() {
             <Table className="table-fixed">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-5"></TableHead>
                   <TableHead className="w-10">
                     <Checkbox
                       checked={selectedIds.size === sortedGroups.length && sortedGroups.length > 0}
@@ -727,7 +662,6 @@ export function EventGroups() {
                 </TableRow>
                 {/* Filter row */}
                 <TableRow className="border-b-2 border-border">
-                  <TableHead className="py-0.5 pb-1.5"></TableHead>
                   <TableHead className="py-0.5 pb-1.5"></TableHead>
                   <TableHead className="py-0.5 pb-1.5">
                     <div className="relative">
@@ -772,7 +706,7 @@ export function EventGroups() {
               <TableBody>
                 {sortedGroups.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                       No groups match the current filters.
                     </TableCell>
                   </TableRow>
@@ -782,21 +716,8 @@ export function EventGroups() {
                   return (
                     <React.Fragment key={group.id}>
                       <TableRow
-                        className={`
-                          border-l-3 border-l-transparent hover:border-l-emerald-500 group/row
-                          ${draggedGroupId === group.id ? "opacity-50" : ""}
-                        `}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, group.id)}
-                        onDragOver={handleDragOver}
-                        onDrop={(e) => handleDrop(e, group.id)}
-                        onDragEnd={handleDragEnd}
+                        className="border-l-3 border-l-transparent hover:border-l-emerald-500 group/row"
                       >
-                        <TableCell className="w-8 p-0">
-                          <div className="flex items-center justify-center h-full cursor-grab active:cursor-grabbing text-muted-foreground group-hover/row:text-emerald-500">
-                            <GripVertical className="h-4 w-4" />
-                          </div>
-                        </TableCell>
                         <TableCell>
                           <Checkbox
                             checked={selectedIds.has(group.id)}

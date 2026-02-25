@@ -1832,55 +1832,6 @@ def get_combined_xmltv() -> Response:
 
 
 # ========================================================================
-# Group Reordering (for AUTO channel assignment)
-# ========================================================================
-
-
-class GroupOrderItem(BaseModel):
-    """Single group reorder item."""
-
-    group_id: int
-    sort_order: int
-
-
-class ReorderGroupsRequest(BaseModel):
-    """Request to reorder multiple groups."""
-
-    groups: list[GroupOrderItem]
-
-
-class ReorderGroupsResponse(BaseModel):
-    """Response from reordering groups."""
-
-    success: bool
-    updated_count: int
-    message: str
-
-
-@router.post("/reorder", response_model=ReorderGroupsResponse)
-def reorder_groups(request: ReorderGroupsRequest):
-    """Reorder groups by updating their sort_order values.
-
-    Used for drag-and-drop reordering of AUTO channel assignment groups.
-    Affects the order in which channel number ranges are allocated.
-    """
-    if not request.groups:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No groups to reorder",
-        )
-
-    from teamarr.database.groups import reorder_groups
-
-    with get_db() as conn:
-        items = [(item.sort_order, item.group_id) for item in request.groups]
-        updated = reorder_groups(conn, items)
-
-    return ReorderGroupsResponse(
-        success=True,
-        updated_count=updated,
-        message=f"Updated sort order for {updated} groups",
-    )
 
 
 # =============================================================================
