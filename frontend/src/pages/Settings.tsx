@@ -25,6 +25,7 @@ import {
   HardDrive,
   ChevronDown,
   ChevronRight,
+  Search,
 } from "lucide-react"
 import {
   ChannelProfileSelector,
@@ -68,6 +69,7 @@ import {
 import { SortPriorityManager } from "@/components/SortPriorityManager"
 import { StreamOrderingManager } from "@/components/StreamOrderingManager"
 import { getLeagues, getSports } from "@/api/teams"
+import { useSubscription } from "@/hooks/useSubscription"
 import { restoreBackup, downloadSpecificBackup } from "@/api/backup"
 import {
   useBackups,
@@ -853,6 +855,13 @@ export function Settings() {
   const updateDurations = useUpdateDurationSettings()
   const updateDisplay = useUpdateDisplaySettings()
 
+  // Subscription for league filtering
+  const { data: subscription } = useSubscription()
+  const subscribedLeagueSlugs = useMemo(
+    () => new Set(subscription?.leagues ?? []),
+    [subscription]
+  )
+
   // Exception keywords
   const keywordsQuery = useExceptionKeywords()
   const createKeyword = useCreateExceptionKeyword()
@@ -920,6 +929,27 @@ export function Settings() {
 
   // Per-league config expanded row state
   const [expandedLeagueConfig, setExpandedLeagueConfig] = useState<string | null>(null)
+
+  // League table filter state (shared between channel numbering and per-league config)
+  const [leagueSearch, setLeagueSearch] = useState("")
+  const [showSubscribedOnly, setShowSubscribedOnly] = useState(true)
+
+  const filteredLeagues = useMemo(() => {
+    const all = leaguesData?.leagues ?? []
+    const searchLower = leagueSearch.toLowerCase()
+    return all
+      .filter((l) => {
+        if (showSubscribedOnly && !subscribedLeagueSlugs.has(l.slug)) return false
+        if (searchLower && !l.name.toLowerCase().includes(searchLower)
+            && !l.sport.toLowerCase().includes(searchLower)) return false
+        return true
+      })
+      .sort((a, b) => {
+        const sportCmp = a.sport.localeCompare(b.sport)
+        if (sportCmp !== 0) return sportCmp
+        return a.name.localeCompare(b.name)
+      })
+  }, [leaguesData, leagueSearch, showSubscribedOnly, subscribedLeagueSlugs])
 
   // Dispatcharr channel groups for per-league config
   const channelGroupsQuery = useQuery({
@@ -1849,6 +1879,25 @@ export function Settings() {
                 Set starting channel numbers for each league. Leagues without a
                 configured start will use the channel range start.
               </p>
+              {/* Search + subscribed-only filter */}
+              <div className="flex items-center gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Filter leagues..."
+                    value={leagueSearch}
+                    onChange={(e) => setLeagueSearch(e.target.value)}
+                    className="pl-8 h-8"
+                  />
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer text-sm whitespace-nowrap">
+                  <Switch
+                    checked={showSubscribedOnly}
+                    onCheckedChange={setShowSubscribedOnly}
+                  />
+                  Subscribed only
+                </label>
+              </div>
               <div className="border rounded-md max-h-64 overflow-y-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted sticky top-0">
@@ -1861,14 +1910,7 @@ export function Settings() {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {(leaguesData?.leagues ?? [])
-                      .slice()
-                      .sort((a, b) => {
-                        const sportCmp = a.sport.localeCompare(b.sport)
-                        if (sportCmp !== 0) return sportCmp
-                        return a.name.localeCompare(b.name)
-                      })
-                      .map((league) => (
+                    {filteredLeagues.map((league) => (
                         <tr key={league.slug} className="hover:bg-muted/30">
                           <td className="px-3 py-1.5 text-muted-foreground">
                             {getSportDisplayName(league.sport, sportsMap)}
@@ -1904,6 +1946,13 @@ export function Settings() {
                           </td>
                         </tr>
                       ))}
+                    {filteredLeagues.length === 0 && (
+                      <tr>
+                        <td colSpan={3} className="px-3 py-4 text-center text-muted-foreground">
+                          {leagueSearch ? "No leagues match your search" : "No subscribed leagues"}
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -2000,7 +2049,26 @@ export function Settings() {
             Override channel profiles, channel group, and group mode per league. Leagues without overrides inherit global defaults.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
+          {/* Search + subscribed-only filter */}
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Filter leagues..."
+                value={leagueSearch}
+                onChange={(e) => setLeagueSearch(e.target.value)}
+                className="pl-8 h-8"
+              />
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer text-sm whitespace-nowrap">
+              <Switch
+                checked={showSubscribedOnly}
+                onCheckedChange={setShowSubscribedOnly}
+              />
+              Subscribed only
+            </label>
+          </div>
           <div className="border rounded-md max-h-96 overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted sticky top-0 z-10">
@@ -2015,14 +2083,7 @@ export function Settings() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {(leaguesData?.leagues ?? [])
-                  .slice()
-                  .sort((a, b) => {
-                    const sportCmp = a.sport.localeCompare(b.sport)
-                    if (sportCmp !== 0) return sportCmp
-                    return a.name.localeCompare(b.name)
-                  })
-                  .map((league) => {
+                {filteredLeagues.map((league) => {
                     const config = leagueConfigsData?.configs?.find(
                       (c) => c.league_code === league.slug
                     )
@@ -2065,6 +2126,13 @@ export function Settings() {
                       />
                     )
                   })}
+                {filteredLeagues.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-3 py-4 text-center text-muted-foreground">
+                      {leagueSearch ? "No leagues match your search" : "No subscribed leagues"}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
