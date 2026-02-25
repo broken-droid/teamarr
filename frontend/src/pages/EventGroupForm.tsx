@@ -20,6 +20,10 @@ import { TeamPicker } from "@/components/TeamPicker"
 import { ChannelProfileSelector } from "@/components/ChannelProfileSelector"
 import { StreamTimezoneSelector } from "@/components/StreamTimezoneSelector"
 import { TestPatternsModal, type PatternState } from "@/components/TestPatternsModal"
+import { LeaguePicker } from "@/components/LeaguePicker"
+import { SoccerModeSelector, type SoccerMode } from "@/components/SoccerModeSelector"
+import { getLeagues } from "@/api/teams"
+import type { SoccerFollowedTeam } from "@/api/types"
 
 // Dispatcharr channel group
 interface ChannelGroup {
@@ -101,6 +105,7 @@ export function EventGroupForm() {
 
   // Collapsible section states
   const [basicSettingsExpanded, setBasicSettingsExpanded] = useState(false)
+  const [subscriptionOverrideExpanded, setSubscriptionOverrideExpanded] = useState(false)
   const [streamTimezoneExpanded, setStreamTimezoneExpanded] = useState(false)
   const [channelGroupExpanded, setChannelGroupExpanded] = useState(false)
   const [channelProfilesExpanded, setChannelProfilesExpanded] = useState(false)
@@ -119,6 +124,20 @@ export function EventGroupForm() {
 
   // Team filter default state - true = use global default, false = custom per-group filter
   const [useDefaultTeamFilter, setUseDefaultTeamFilter] = useState(true)
+
+  // Subscription override state - true = use global subscription, false = custom per-group
+  const [useGlobalSubscription, setUseGlobalSubscription] = useState(true)
+  const [overrideNonSoccerLeagues, setOverrideNonSoccerLeagues] = useState<string[]>([])
+  const [overrideSoccerMode, setOverrideSoccerMode] = useState<SoccerMode>(null)
+  const [overrideSoccerLeagues, setOverrideSoccerLeagues] = useState<string[]>([])
+  const [overrideFollowedTeams, setOverrideFollowedTeams] = useState<SoccerFollowedTeam[]>([])
+
+  // Fetch leagues for splitting soccer vs non-soccer
+  const { data: leaguesData } = useQuery({
+    queryKey: ["leagues"],
+    queryFn: () => getLeagues(),
+  })
+  const allLeagues = leaguesData?.leagues || []
 
   // Mutations
   const createMutation = useCreateGroup()
@@ -203,8 +222,29 @@ export function EventGroupForm() {
       // null means use global default, any array (even empty) means custom per-group filter
       const hasCustomTeamFilter = group.include_teams !== null || group.exclude_teams !== null
       setUseDefaultTeamFilter(!hasCustomTeamFilter)
+
+      // Set subscription override state
+      const hasSubscriptionOverride = group.subscription_leagues !== null
+      setUseGlobalSubscription(!hasSubscriptionOverride)
+      if (hasSubscriptionOverride && group.subscription_leagues) {
+        // Split subscription_leagues into soccer vs non-soccer
+        const soccer: string[] = []
+        const nonSoccer: string[] = []
+        for (const slug of group.subscription_leagues) {
+          const league = allLeagues.find((l) => l.slug === slug)
+          if (league?.sport?.toLowerCase() === "soccer") {
+            soccer.push(slug)
+          } else {
+            nonSoccer.push(slug)
+          }
+        }
+        setOverrideNonSoccerLeagues(nonSoccer)
+        setOverrideSoccerLeagues(soccer)
+        setOverrideSoccerMode((group.subscription_soccer_mode as SoccerMode) || null)
+        setOverrideFollowedTeams(group.subscription_soccer_followed_teams || [])
+      }
     }
-  }, [group])
+  }, [group, allLeagues])
 
   // Filtered channel groups based on search
   const filteredChannelGroups = useMemo(() => {
@@ -223,6 +263,14 @@ export function EventGroupForm() {
     try {
       const submitData = {
         ...formData,
+        // Subscription override fields
+        subscription_leagues: useGlobalSubscription
+          ? null
+          : [...overrideNonSoccerLeagues, ...overrideSoccerLeagues],
+        subscription_soccer_mode: useGlobalSubscription ? null : overrideSoccerMode,
+        subscription_soccer_followed_teams: useGlobalSubscription
+          ? null
+          : (overrideFollowedTeams.length > 0 ? overrideFollowedTeams : null),
       }
 
       if (isEdit) {
@@ -242,6 +290,12 @@ export function EventGroupForm() {
           }
           if (shouldClear(group.stream_timezone, formData.stream_timezone)) {
             updateData.clear_stream_timezone = true
+          }
+          // Clear subscription override when switching back to global
+          if (useGlobalSubscription && group.subscription_leagues !== null) {
+            updateData.clear_subscription_leagues = true
+            updateData.clear_subscription_soccer_mode = true
+            updateData.clear_subscription_soccer_followed_teams = true
           }
         }
 
@@ -752,6 +806,90 @@ export function EventGroupForm() {
                     </div>
                   )}
                 </div>
+              </CardContent>
+            )}
+          </Card>
+
+          {/* Subscription Override */}
+          <Card>
+            <button
+              type="button"
+              onClick={() => setSubscriptionOverrideExpanded(!subscriptionOverrideExpanded)}
+              className="w-full"
+            >
+              <CardHeader className="flex flex-row items-center justify-between py-3 cursor-pointer hover:bg-muted/50 rounded-t-lg">
+                <div className="flex items-center gap-2">
+                  {subscriptionOverrideExpanded ? (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <CardTitle>Subscription Override</CardTitle>
+                  {!subscriptionOverrideExpanded && !useGlobalSubscription && (
+                    <span className="text-xs text-amber-500 font-medium ml-2">Custom</span>
+                  )}
+                </div>
+              </CardHeader>
+            </button>
+
+            {subscriptionOverrideExpanded && (
+              <CardContent className="space-y-4 pt-0">
+                <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                  <Checkbox
+                    checked={useGlobalSubscription}
+                    onCheckedChange={() => {
+                      const newValue = !useGlobalSubscription
+                      setUseGlobalSubscription(newValue)
+                      if (newValue) {
+                        // Revert to global — clear local override state
+                        setOverrideNonSoccerLeagues([])
+                        setOverrideSoccerLeagues([])
+                        setOverrideSoccerMode(null)
+                        setOverrideFollowedTeams([])
+                      }
+                    }}
+                  />
+                  <span className="text-sm font-normal">
+                    Use global subscription (set on Event Groups page)
+                  </span>
+                </label>
+
+                {!useGlobalSubscription && (
+                  <>
+                    <p className="text-sm text-muted-foreground">
+                      Override which leagues this group matches against instead of using the global subscription.
+                    </p>
+
+                    {/* Non-Soccer Sports */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Non-Soccer Sports</Label>
+                      <LeaguePicker
+                        selectedLeagues={overrideNonSoccerLeagues}
+                        onSelectionChange={setOverrideNonSoccerLeagues}
+                        excludeSport="soccer"
+                        maxHeight="max-h-48"
+                        showSearch={true}
+                        showSelectedBadges={true}
+                        maxBadges={8}
+                      />
+                    </div>
+
+                    <div className="border-t" />
+
+                    {/* Soccer */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Soccer Leagues</Label>
+                      <SoccerModeSelector
+                        mode={overrideSoccerMode}
+                        onModeChange={setOverrideSoccerMode}
+                        selectedLeagues={overrideSoccerLeagues}
+                        onLeaguesChange={setOverrideSoccerLeagues}
+                        followedTeams={overrideFollowedTeams}
+                        onFollowedTeamsChange={setOverrideFollowedTeams}
+                      />
+                    </div>
+                  </>
+                )}
               </CardContent>
             )}
           </Card>
