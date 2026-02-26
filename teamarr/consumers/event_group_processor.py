@@ -980,11 +980,8 @@ class EventGroupProcessor:
                 streams, match_result, stream_timezone=group.stream_timezone
             )
 
-            # Sort channels based on global channel numbering sort_by setting
-            from teamarr.database.settings import get_channel_numbering_settings
-
-            channel_numbering = get_channel_numbering_settings(conn)
-            matched_streams = self._sort_matched_streams(matched_streams, channel_numbering.sort_by)
+            # Sort channels: sport → league → time → event_id (fixed order since v59)
+            matched_streams = self._sort_matched_streams(matched_streams)
 
             # Enrich ALL matched events with fresh status from provider
             # This ensures lifecycle filtering uses current final status
