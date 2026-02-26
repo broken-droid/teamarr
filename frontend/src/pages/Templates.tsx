@@ -276,12 +276,23 @@ export function Templates() {
                         template.global_assignments && template.global_assignments.length > 0 ? (
                           <div className="flex flex-wrap gap-1">
                             {template.global_assignments.map((a, i) => {
-                              const parts: string[] = []
-                              if (a.leagues?.length) parts.push(a.leagues.join(", "))
-                              else if (a.sports?.length) parts.push(a.sports.join(", "))
+                              if (a.leagues?.length) {
+                                return (
+                                  <Badge key={i} variant="outline" className="text-xs">
+                                    {a.leagues.join(", ")}
+                                  </Badge>
+                                )
+                              }
+                              if (a.sports?.length) {
+                                return (
+                                  <Badge key={i} variant="outline" className="text-xs">
+                                    {a.sports.join(", ")}
+                                  </Badge>
+                                )
+                              }
                               return (
-                                <Badge key={i} variant="outline" className="text-xs">
-                                  {parts.length > 0 ? parts[0] : "All events"}
+                                <Badge key={i} variant="secondary" className="text-xs">
+                                  Default
                                 </Badge>
                               )
                             })}
