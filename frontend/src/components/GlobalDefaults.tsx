@@ -231,44 +231,16 @@ export function GlobalDefaults() {
         </CardHeader>
 
         {expanded && (
-          <CardContent className="space-y-6">
-            {/* Non-Soccer Sports Section */}
-            <div className="space-y-3">
-              <Label className="text-base font-medium">Non-Soccer Sports</Label>
-              <LeaguePicker
-                selectedLeagues={nonSoccerLeagues}
-                onSelectionChange={handleNonSoccerChange}
-                excludeSport="soccer"
-                maxHeight="max-h-64"
-                showSearch={true}
-                showSelectedBadges={true}
-                maxBadges={10}
-              />
-            </div>
-
-            {/* Divider */}
-            <div className="border-t" />
-
-            {/* Soccer Mode Section */}
-            <div className="space-y-3">
-              <Label className="text-base font-medium">Soccer Leagues</Label>
-              <SoccerModeSelector
-                mode={soccerMode}
-                onModeChange={handleSoccerModeChange}
-                selectedLeagues={soccerLeagues}
-                onLeaguesChange={handleSoccerLeaguesChange}
-                followedTeams={followedTeams}
-                onFollowedTeamsChange={handleFollowedTeamsChange}
-              />
-            </div>
-
-            {/* Divider */}
-            <div className="border-t" />
-
-            {/* Template Assignments Section */}
-            <div className="space-y-3">
+          <CardContent className="space-y-4">
+            {/* ── Section 1: Template Assignments ── */}
+            <div className="rounded-lg border bg-card p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <Label className="text-base font-medium">Template Assignments</Label>
+                <div>
+                  <Label className="text-base font-medium">Template Assignments</Label>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Assign templates by sport or league. More specific matches take priority (league &gt; sport &gt; default).
+                  </p>
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
@@ -281,39 +253,56 @@ export function GlobalDefaults() {
                   Manage ({templateCount})
                 </Button>
               </div>
-              <p className="text-sm text-muted-foreground">
-                Assign templates by sport or league. More specific matches take priority (league &gt; sport &gt; default).
-              </p>
             </div>
 
-            {/* Divider */}
-            <div className="border-t" />
+            {/* ── Section 2: Sport / League Subscriptions ── */}
+            <div className="rounded-lg border bg-card p-4 space-y-4">
+              <Label className="text-base font-medium">Sport / League Subscriptions</Label>
 
-            {/* Save Button (subscription) */}
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                {hasLocalChanges
-                  ? "You have unsaved changes. Save to apply."
-                  : "Groups without their own subscription overrides will use these defaults."}
-              </p>
-              <Button
-                onClick={handleSave}
-                disabled={!hasLocalChanges || updateMutation.isPending}
-              >
-                {updateMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4 mr-2" />
-                )}
-                Save
-              </Button>
+              <div className="space-y-3">
+                <Label className="text-sm font-medium text-muted-foreground">Non-Soccer Sports</Label>
+                <LeaguePicker
+                  selectedLeagues={nonSoccerLeagues}
+                  onSelectionChange={handleNonSoccerChange}
+                  excludeSport="soccer"
+                  maxHeight="max-h-64"
+                  showSearch={true}
+                  showSelectedBadges={true}
+                  maxBadges={10}
+                />
+              </div>
+
+              <div className="border-t" />
+
+              <div className="space-y-3">
+                <Label className="text-sm font-medium text-muted-foreground">Soccer Leagues</Label>
+                <SoccerModeSelector
+                  mode={soccerMode}
+                  onModeChange={handleSoccerModeChange}
+                  selectedLeagues={soccerLeagues}
+                  onLeaguesChange={handleSoccerLeaguesChange}
+                  followedTeams={followedTeams}
+                  onFollowedTeamsChange={handleFollowedTeamsChange}
+                />
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <Button
+                  onClick={handleSave}
+                  disabled={!hasLocalChanges || updateMutation.isPending}
+                >
+                  {updateMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-2" />
+                  )}
+                  Save Subscriptions
+                </Button>
+              </div>
             </div>
 
-            {/* Divider */}
-            <div className="border-t" />
-
-            {/* Default Team Filter Section */}
-            <div className="space-y-4">
+            {/* ── Section 3: Default Team Filter ── */}
+            <div className="rounded-lg border bg-card p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <Label className="text-base font-medium">Default Team Filter</Label>
                 <div className="flex items-center gap-2">
@@ -329,9 +318,6 @@ export function GlobalDefaults() {
                   />
                 </div>
               </div>
-              <p className="text-sm text-muted-foreground">
-                Global team filter applied to all event groups that don't have their own filter.
-              </p>
 
               {/* Mode selector */}
               <div className="flex items-center gap-4">
@@ -395,22 +381,15 @@ export function GlobalDefaults() {
 
               {/* Status message and Save button */}
               <div className="flex justify-between items-center">
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">
-                    {!teamFilter.enabled
-                      ? "Team filtering is disabled. All events will be matched."
-                      : !(teamFilter.include_teams?.length || teamFilter.exclude_teams?.length)
-                        ? "No teams selected. All events will be matched."
-                        : teamFilter.mode === "include"
-                          ? `Only events involving ${teamFilter.include_teams?.length} selected team(s) will be matched.`
-                          : `Events involving ${teamFilter.exclude_teams?.length} selected team(s) will be excluded.`}
-                  </p>
-                  {teamFilter.enabled && (teamFilter.include_teams?.length || teamFilter.exclude_teams?.length) ? (
-                    <p className="text-xs text-muted-foreground italic">
-                      Filter only applies to leagues where you've made selections.
-                    </p>
-                  ) : null}
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  {!teamFilter.enabled
+                    ? "Team filtering is disabled. All events will be matched."
+                    : !(teamFilter.include_teams?.length || teamFilter.exclude_teams?.length)
+                      ? "No teams selected. All events will be matched."
+                      : teamFilter.mode === "include"
+                        ? `Only events involving ${teamFilter.include_teams?.length} selected team(s) will be matched.`
+                        : `Events involving ${teamFilter.exclude_teams?.length} selected team(s) will be excluded.`}
+                </p>
                 <Button
                   onClick={handleSaveTeamFilter}
                   disabled={updateTeamFilter.isPending}
@@ -420,7 +399,7 @@ export function GlobalDefaults() {
                   ) : (
                     <Save className="h-4 w-4 mr-2" />
                   )}
-                  Save Default Filter
+                  Save Team Filter
                 </Button>
               </div>
             </div>
