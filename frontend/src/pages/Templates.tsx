@@ -273,15 +273,23 @@ export function Templates() {
                           </Badge>
                         )
                       ) : (
-                        template.group_count && template.group_count > 0 ? (
-                          <Badge variant="outline" className="text-xs">
-                            {template.group_count} group{template.group_count !== 1 ? "s" : ""}
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-xs text-muted-foreground">
-                            None
-                          </Badge>
-                        )
+                        <div className="flex flex-wrap gap-1">
+                          {template.global_count && template.global_count > 0 ? (
+                            <Badge variant="outline" className="text-xs">
+                              Global
+                            </Badge>
+                          ) : null}
+                          {template.group_count && template.group_count > 0 ? (
+                            <Badge variant="outline" className="text-xs">
+                              {template.group_count} group{template.group_count !== 1 ? "s" : ""}
+                            </Badge>
+                          ) : null}
+                          {!template.global_count && !template.group_count && (
+                            <Badge variant="outline" className="text-xs text-muted-foreground">
+                              None
+                            </Badge>
+                          )}
+                        </div>
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">

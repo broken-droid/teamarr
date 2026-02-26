@@ -248,6 +248,7 @@ class TemplateResponse(BaseModel):
     # Usage counts from list query
     team_count: int | None = None
     group_count: int | None = None
+    global_count: int | None = None
 
 
 class TemplateFullResponse(TemplateResponse):

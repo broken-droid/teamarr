@@ -107,6 +107,7 @@ export interface Template {
   // Usage counts (from list endpoint)
   team_count?: number
   group_count?: number
+  global_count?: number
 
   created_at: string
   updated_at: string

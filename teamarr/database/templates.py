@@ -243,7 +243,8 @@ def list_templates_with_counts(conn: Connection) -> list[dict]:
         """
         SELECT t.*,
                COALESCE((SELECT COUNT(*) FROM teams WHERE template_id = t.id), 0) as team_count,
-               COALESCE((SELECT COUNT(*) FROM event_epg_groups WHERE template_id = t.id), 0) as group_count
+               COALESCE((SELECT COUNT(DISTINCT group_id) FROM group_templates WHERE template_id = t.id), 0) as group_count,
+               COALESCE((SELECT COUNT(*) FROM subscription_templates WHERE template_id = t.id), 0) as global_count
         FROM templates t
         ORDER BY t.name
         """  # noqa: E501
