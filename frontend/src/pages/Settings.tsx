@@ -82,7 +82,7 @@ import {
   useUpdateBackupSettings,
 } from "@/hooks/useBackup"
 import { useQuery } from "@tanstack/react-query"
-import { useCacheStatus, useRefreshCache, useGameDataCacheStats, useClearGameDataCache, useClearAllRuns } from "@/hooks/useEPG"
+import { useCacheStatus, useRefreshCache, useGameDataCacheStats, useClearGameDataCache, useClearAllRuns, useMatchCacheStats, useClearAllMatchCache } from "@/hooks/useEPG"
 import { useDateFormat } from "@/hooks/useDateFormat"
 import type {
   DispatcharrSettings,
@@ -869,6 +869,8 @@ export function Settings() {
   const { data: gameDataCacheStats } = useGameDataCacheStats()
   const clearGameDataCacheMutation = useClearGameDataCache()
   const clearAllRunsMutation = useClearAllRuns()
+  const { data: matchCacheStats } = useMatchCacheStats()
+  const clearAllMatchCacheMutation = useClearAllMatchCache()
   const { startGeneration, isGenerating } = useGenerationProgress()
 
   const updateDispatcharr = useUpdateDispatcharrSettings()
@@ -2990,9 +2992,9 @@ export function Settings() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-3 gap-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 lg:divide-x">
             {/* Team & League Directory Section */}
-            <div className="space-y-4">
+            <div className="flex flex-col gap-4 lg:pr-6">
               <h4 className="text-sm font-medium">Team & League Directory</h4>
               <div className="grid grid-cols-2 gap-3">
                 <div className="text-center">
@@ -3024,7 +3026,7 @@ export function Settings() {
               <Button
                 onClick={handleRefreshCache}
                 disabled={refreshCacheMutation.isPending || cacheStatus?.refresh_in_progress}
-                className="w-full"
+                className="w-full mt-auto"
                 size="sm"
               >
                 {(refreshCacheMutation.isPending || cacheStatus?.refresh_in_progress) && (
@@ -3035,7 +3037,7 @@ export function Settings() {
             </div>
 
             {/* Game Data Cache Section */}
-            <div className="space-y-4">
+            <div className="flex flex-col gap-4 lg:pl-6">
               <h4 className="text-sm font-medium">Game Data Cache</h4>
               <div className="grid grid-cols-2 gap-3">
                 <div className="text-center">
@@ -3061,19 +3063,51 @@ export function Settings() {
                   })
                 }}
                 disabled={clearGameDataCacheMutation.isPending}
-                className="w-full"
+                className="w-full mt-auto"
               >
                 {clearGameDataCacheMutation.isPending ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
                   <Trash2 className="h-4 w-4 mr-2" />
                 )}
-                Clear Game Data Cache
+                Clear Game Cache
+              </Button>
+            </div>
+
+            {/* Stream Match Cache Section */}
+            <div className="flex flex-col gap-4 lg:pl-6">
+              <h4 className="text-sm font-medium">Stream Match Cache</h4>
+              <div className="text-center">
+                <div className="text-2xl font-bold">{matchCacheStats?.total_entries ?? 0}</div>
+                <div className="text-xs text-muted-foreground">Cached Matches</div>
+              </div>
+              <div className="text-center text-xs text-muted-foreground">
+                Stream-to-event fingerprint matches
+              </div>
+
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => {
+                  clearAllMatchCacheMutation.mutate(undefined, {
+                    onSuccess: (data) => toast.success(`Cleared ${data.total_cleared ?? 0} match cache entries`),
+                    onError: () => toast.error("Failed to clear match cache"),
+                  })
+                }}
+                disabled={clearAllMatchCacheMutation.isPending}
+                className="w-full mt-auto"
+              >
+                {clearAllMatchCacheMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4 mr-2" />
+                )}
+                Clear Match Cache
               </Button>
             </div>
 
             {/* Run History Cleanup Section */}
-            <div className="space-y-4">
+            <div className="flex flex-col gap-4 lg:pl-6">
               <h4 className="text-sm font-medium">Run History</h4>
               <div className="text-center">
                 <div className="text-xs text-muted-foreground">
@@ -3094,14 +3128,14 @@ export function Settings() {
                   })
                 }}
                 disabled={clearAllRunsMutation.isPending}
-                className="w-full"
+                className="w-full mt-auto"
               >
                 {clearAllRunsMutation.isPending ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
                   <Trash2 className="h-4 w-4 mr-2" />
                 )}
-                Clear All Run History
+                Clear Run History
               </Button>
             </div>
           </div>

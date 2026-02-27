@@ -1033,6 +1033,21 @@ def bulk_set_group_templates():
     )
 
 
+class MatchCacheStatsResponse(BaseModel):
+    """Response for stream match cache statistics."""
+
+    total_entries: int
+
+
+@router.get("/cache/stats", response_model=MatchCacheStatsResponse)
+def get_match_cache_stats():
+    """Get stream match cache statistics."""
+    from teamarr.consumers.stream_match_cache import StreamMatchCache
+
+    cache = StreamMatchCache(get_db)
+    return MatchCacheStatsResponse(total_entries=cache.get_size())
+
+
 @router.get("/{group_id}", response_model=GroupResponse)
 def get_group_by_id(group_id: int):
     """Get a single event EPG group."""
@@ -1502,6 +1517,25 @@ def clear_groups_match_cache(request: ClearCacheRequest):
         success=True,
         total_cleared=total_cleared,
         by_group=results,
+    )
+
+
+@router.post("/cache/clear-all", response_model=ClearCacheResponse)
+def clear_all_match_cache():
+    """Clear entire stream match cache for all groups.
+
+    Forces re-matching on next EPG generation run for every group.
+    """
+    from teamarr.consumers.stream_match_cache import StreamMatchCache
+
+    cache = StreamMatchCache(get_db)
+    cleared = cache.clear_all()
+
+    logger.info("[CACHE_CLEAR_ALL] Cleared %d entries", cleared)
+
+    return ClearCacheResponse(
+        success=True,
+        total_cleared=cleared,
     )
 
 

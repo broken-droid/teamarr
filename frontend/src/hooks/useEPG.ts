@@ -11,6 +11,7 @@ import {
   clearGameDataCache,
 } from "@/api/epg"
 import type { EPGGenerateRequest } from "@/api/epg"
+import { clearAllMatchCache, getMatchCacheStats } from "@/api/groups"
 import { statsApi } from "@/api/stats"
 
 export function useStats() {
@@ -107,6 +108,27 @@ export function useClearAllRuns() {
     mutationFn: () => statsApi.clearAllRuns(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["runs"] })
+    },
+  })
+}
+
+// Stream Match Cache
+
+export function useMatchCacheStats() {
+  return useQuery({
+    queryKey: ["matchCacheStats"],
+    queryFn: getMatchCacheStats,
+    refetchInterval: 30000,
+  })
+}
+
+export function useClearAllMatchCache() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: clearAllMatchCache,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["matchCacheStats"] })
     },
   })
 }

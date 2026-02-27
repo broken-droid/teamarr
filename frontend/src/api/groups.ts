@@ -105,3 +105,15 @@ export async function clearGroupsMatchCache(
   return api.post("/groups/cache/clear", { group_ids: groupIds })
 }
 
+export async function clearAllMatchCache(): Promise<ClearCacheResponse> {
+  return api.post("/groups/cache/clear-all")
+}
+
+export interface MatchCacheStats {
+  total_entries: number
+}
+
+export async function getMatchCacheStats(): Promise<MatchCacheStats> {
+  return api.get("/groups/cache/stats")
+}
+
