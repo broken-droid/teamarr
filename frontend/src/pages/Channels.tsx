@@ -51,7 +51,8 @@ import {
   executeResetChannels,
 } from "@/api/channels"
 import type { ManagedChannel, ResetChannelInfo } from "@/api/channels"
-import { getLeagueDisplayName } from "@/lib/utils"
+import { getLeagueDisplayName, getSportDisplayName } from "@/lib/utils"
+import { useSports } from "@/hooks/useSports"
 
 function formatDateTime(dateStr: string | null): string {
   if (!dateStr) return "-"
@@ -102,7 +103,7 @@ function getSyncStatusBadge(status: string) {
 export function Channels() {
   // Filter states
   const [nameFilter, setNameFilter] = useState<string>("")
-  const [groupFilter, setGroupFilter] = useState<string>("")
+  const [sportFilter, setSportFilter] = useState<string>("")
   const [leagueFilter, setLeagueFilter] = useState<string>("")
   const [statusFilter, setStatusFilter] = useState<string>("")
   const [includeDeleted, setIncludeDeleted] = useState(false)
@@ -123,18 +124,19 @@ export function Channels() {
   const queryClient = useQueryClient()
 
   const { data: groups } = useGroups()
+  const { data: sportsData } = useSports()
+  const sportsMap = sportsData?.sports ?? {}
   const { data: leaguesData } = useQuery({
     queryKey: ["leagues"],
     queryFn: () => getLeagues(),
     staleTime: 1000 * 60 * 60, // 1 hour
   })
-  const selectedGroupId = groupFilter ? parseInt(groupFilter) : undefined
   const {
     data: channelsData,
     isLoading,
     error,
     refetch,
-  } = useManagedChannels(selectedGroupId, includeDeleted)
+  } = useManagedChannels(undefined, includeDeleted)
   const { data: pendingData } = usePendingDeletions()
 
   // Fetch all channels including deleted for the Recently Deleted section
@@ -171,15 +173,18 @@ export function Channels() {
   }, [reconciliationData])
 
   // Extract unique filter values from data
-  const { leagues, statuses } = useMemo(() => {
+  const { sports, leagues, statuses } = useMemo(() => {
     const channels = channelsData?.channels ?? []
+    const sportSet = new Set<string>()
     const leagueSet = new Set<string>()
     const statusSet = new Set<string>()
     for (const ch of channels) {
+      if (ch.sport) sportSet.add(ch.sport)
       if (ch.league) leagueSet.add(ch.league)
       if (ch.sync_status) statusSet.add(ch.sync_status)
     }
     return {
+      sports: Array.from(sportSet).sort(),
       leagues: Array.from(leagueSet).sort(),
       statuses: Array.from(statusSet).sort(),
     }
@@ -216,6 +221,9 @@ export function Channels() {
         ch.channel_name.toLowerCase().includes(searchLower)
       )
     }
+    if (sportFilter) {
+      channels = channels.filter((ch) => ch.sport === sportFilter)
+    }
     if (leagueFilter) {
       channels = channels.filter((ch) => ch.league === leagueFilter)
     }
@@ -223,7 +231,7 @@ export function Channels() {
       channels = channels.filter((ch) => ch.sync_status === statusFilter)
     }
     return channels
-  }, [channelsData, nameFilter, leagueFilter, statusFilter])
+  }, [channelsData, nameFilter, sportFilter, leagueFilter, statusFilter])
 
   // Mutation for deleting orphan channel
   const deleteOrphanMutation = useMutation({
@@ -514,7 +522,7 @@ export function Channels() {
                   </TableHead>
                   <TableHead className="w-[25%]">Channel</TableHead>
                   <TableHead className="w-[25%]">Event</TableHead>
-                  <TableHead className="w-28">Group</TableHead>
+                  <TableHead className="w-28">Sport</TableHead>
                   <TableHead className="w-20">League</TableHead>
                   <TableHead className="w-20">Status</TableHead>
                   <TableHead className="w-24">Delete At</TableHead>
@@ -545,14 +553,14 @@ export function Channels() {
                   <TableHead className="py-0.5 pb-1.5"></TableHead>
                   <TableHead className="py-0.5 pb-1.5">
                     <FilterSelect
-                      value={groupFilter}
-                      onChange={setGroupFilter}
+                      value={sportFilter}
+                      onChange={setSportFilter}
                       options={[
                         { value: "", label: "All" },
-                        ...(groups?.groups?.map((g) => ({
-                          value: g.id.toString(),
-                          label: g.name,
-                        })) ?? []),
+                        ...sports.map((s) => ({
+                          value: s,
+                          label: getSportDisplayName(s, sportsMap),
+                        })),
                       ]}
                     />
                   </TableHead>
@@ -633,8 +641,8 @@ export function Channels() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm truncate">
-                      {channel.event_epg_group_id ? groupLookup.get(channel.event_epg_group_id) ?? "-" : "-"}
+                    <TableCell className="text-sm truncate" title={channel.event_epg_group_id ? groupLookup.get(channel.event_epg_group_id) : undefined}>
+                      {channel.sport ? getSportDisplayName(channel.sport, sportsMap) : "-"}
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary" className="text-xs">{getLeagueDisplay(channel.league)}</Badge>
@@ -686,7 +694,7 @@ export function Channels() {
                 <TableRow>
                   <TableHead>Channel</TableHead>
                   <TableHead>Event</TableHead>
-                  <TableHead>Group</TableHead>
+                  <TableHead>Sport</TableHead>
                   <TableHead>League</TableHead>
                   <TableHead>Deleted</TableHead>
                 </TableRow>
@@ -717,7 +725,7 @@ export function Channels() {
                       </div>
                     </TableCell>
                     <TableCell className="text-sm">
-                      {channel.event_epg_group_id ? groupLookup.get(channel.event_epg_group_id) ?? "-" : "-"}
+                      {channel.sport ? getSportDisplayName(channel.sport, sportsMap) : "-"}
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary" className="text-xs">{getLeagueDisplay(channel.league)}</Badge>
