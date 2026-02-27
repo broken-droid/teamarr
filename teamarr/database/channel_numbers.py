@@ -103,8 +103,8 @@ def _get_all_used_channels(conn: Connection) -> set[int]:
     cursor = conn.execute(
         """SELECT mc.channel_number
            FROM managed_channels mc
-           JOIN event_epg_groups g ON mc.event_epg_group_id = g.id
-           WHERE g.enabled = 1
+           LEFT JOIN event_epg_groups g ON mc.event_epg_group_id = g.id
+           WHERE (g.enabled = 1 OR mc.event_epg_group_id IS NULL)
              AND mc.deleted_at IS NULL"""
     )
 
@@ -280,8 +280,8 @@ def get_all_channels_sorted(conn: Connection) -> list[dict]:
             mc.exception_keyword,
             mc.created_at
         FROM managed_channels mc
-        JOIN event_epg_groups g ON mc.event_epg_group_id = g.id
-        WHERE g.enabled = 1
+        LEFT JOIN event_epg_groups g ON mc.event_epg_group_id = g.id
+        WHERE (g.enabled = 1 OR mc.event_epg_group_id IS NULL)
           AND mc.deleted_at IS NULL
     """)
 

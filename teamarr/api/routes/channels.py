@@ -45,7 +45,7 @@ class ManagedChannelModel(BaseModel):
     """Managed channel response model."""
 
     id: int
-    event_epg_group_id: int
+    event_epg_group_id: int | None = None  # Source group (provenance)
     event_id: str
     event_provider: str
     tvg_id: str

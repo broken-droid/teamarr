@@ -634,7 +634,7 @@ export function Channels() {
                       </div>
                     </TableCell>
                     <TableCell className="text-sm truncate">
-                      {groupLookup.get(channel.event_epg_group_id) ?? "-"}
+                      {channel.event_epg_group_id ? groupLookup.get(channel.event_epg_group_id) ?? "-" : "-"}
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary" className="text-xs">{getLeagueDisplay(channel.league)}</Badge>
@@ -717,7 +717,7 @@ export function Channels() {
                       </div>
                     </TableCell>
                     <TableCell className="text-sm">
-                      {groupLookup.get(channel.event_epg_group_id) ?? "-"}
+                      {channel.event_epg_group_id ? groupLookup.get(channel.event_epg_group_id) ?? "-" : "-"}
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary" className="text-xs">{getLeagueDisplay(channel.league)}</Badge>

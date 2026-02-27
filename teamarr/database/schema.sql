@@ -566,7 +566,7 @@ CREATE TABLE IF NOT EXISTS managed_channels (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     -- Source Group (which event group supplied the first matched stream — provenance, not ownership)
-    event_epg_group_id INTEGER NOT NULL,
+    event_epg_group_id INTEGER,
 
     -- Event Reference (provider-agnostic)
     event_id TEXT NOT NULL,
@@ -622,7 +622,7 @@ CREATE TABLE IF NOT EXISTS managed_channels (
     expires_at TIMESTAMP,
     external_channel_id INTEGER,             -- Alias for dispatcharr_channel_id
 
-    FOREIGN KEY (event_epg_group_id) REFERENCES event_epg_groups(id) ON DELETE CASCADE
+    FOREIGN KEY (event_epg_group_id) REFERENCES event_epg_groups(id) ON DELETE SET NULL
     -- Note: No table-level UNIQUE on (event_id, event_provider) - use partial index instead
     -- This allows soft-deleted rows to exist alongside active ones
 );

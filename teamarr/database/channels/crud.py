@@ -285,13 +285,13 @@ def get_all_managed_channels(
     """
     if include_deleted:
         cursor = conn.execute(
-            "SELECT * FROM managed_channels ORDER BY event_epg_group_id, channel_number"
+            "SELECT * FROM managed_channels ORDER BY sport, league, channel_number"
         )
     else:
         cursor = conn.execute(
             """SELECT * FROM managed_channels
                WHERE deleted_at IS NULL
-               ORDER BY event_epg_group_id, channel_number"""
+               ORDER BY sport, league, channel_number"""
         )
     return [ManagedChannel.from_row(dict(row)) for row in cursor.fetchall()]
 

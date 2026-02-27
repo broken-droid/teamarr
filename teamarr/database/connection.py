@@ -1115,6 +1115,172 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("[MIGRATE] Schema upgraded to version 62 (global default channel group)")
         current_version = 62
 
+    # v63: Make event_epg_group_id nullable + change FK from CASCADE to SET NULL
+    # Channels are owned by events, not groups. Groups are just stream sources.
+    # Deleting a group should NULL the provenance link, not cascade-delete channels.
+    if current_version < 63:
+        # Check if managed_channels table exists (test schemas may not have it)
+        has_mc = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master "
+            "WHERE type='table' AND name='managed_channels'"
+        ).fetchone()[0]
+
+        if not has_mc:
+            logger.info(
+                "[MIGRATE v63] managed_channels table not found, skipping rebuild"
+            )
+        else:
+            try:
+                # SQLite requires table rebuild to change NOT NULL and FK actions
+                conn.execute("PRAGMA foreign_keys = OFF")
+                conn.execute("""
+                    CREATE TABLE managed_channels_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        event_epg_group_id INTEGER,
+                        event_id TEXT NOT NULL,
+                        event_provider TEXT NOT NULL,
+                        tvg_id TEXT NOT NULL,
+                        channel_name TEXT NOT NULL,
+                        channel_number TEXT,
+                        logo_url TEXT,
+                        dispatcharr_channel_id INTEGER,
+                        dispatcharr_uuid TEXT,
+                        dispatcharr_logo_id INTEGER,
+                        channel_group_id INTEGER,
+                        channel_profile_ids TEXT,
+                        primary_stream_id INTEGER,
+                        exception_keyword TEXT,
+                        home_team TEXT,
+                        home_team_abbrev TEXT,
+                        home_team_logo TEXT,
+                        away_team TEXT,
+                        away_team_abbrev TEXT,
+                        away_team_logo TEXT,
+                        event_date TIMESTAMP,
+                        event_name TEXT,
+                        league TEXT,
+                        sport TEXT,
+                        venue TEXT,
+                        broadcast TEXT,
+                        scheduled_delete_at TIMESTAMP,
+                        deleted_at TIMESTAMP,
+                        delete_reason TEXT,
+                        sync_status TEXT DEFAULT 'pending'
+                            CHECK(sync_status IN (
+                                'pending', 'created', 'in_sync',
+                                'drifted', 'orphaned', 'error'
+                            )),
+                        sync_message TEXT,
+                        last_verified_at TIMESTAMP,
+                        expires_at TIMESTAMP,
+                        external_channel_id INTEGER,
+                        FOREIGN KEY (event_epg_group_id)
+                            REFERENCES event_epg_groups(id) ON DELETE SET NULL
+                    )
+                """)
+                conn.execute("""
+                    INSERT INTO managed_channels_new
+                    SELECT id, created_at, updated_at, event_epg_group_id,
+                           event_id, event_provider, tvg_id, channel_name,
+                           channel_number, logo_url, dispatcharr_channel_id,
+                           dispatcharr_uuid, dispatcharr_logo_id,
+                           channel_group_id, channel_profile_ids,
+                           primary_stream_id, exception_keyword,
+                           home_team, home_team_abbrev, home_team_logo,
+                           away_team, away_team_abbrev, away_team_logo,
+                           event_date, event_name, league, sport, venue,
+                           broadcast, scheduled_delete_at, deleted_at,
+                           delete_reason, sync_status, sync_message,
+                           last_verified_at, expires_at, external_channel_id
+                    FROM managed_channels
+                """)
+                conn.execute("DROP TABLE managed_channels")
+                conn.execute(
+                    "ALTER TABLE managed_channels_new "
+                    "RENAME TO managed_channels"
+                )
+                # Recreate indexes
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_managed_channels_group
+                    ON managed_channels(event_epg_group_id)
+                """)
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_managed_channels_event
+                    ON managed_channels(event_id, event_provider)
+                """)
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_managed_channels_expires
+                    ON managed_channels(expires_at)
+                """)
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_managed_channels_delete
+                    ON managed_channels(scheduled_delete_at)
+                    WHERE deleted_at IS NULL
+                """)
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_managed_channels_dispatcharr
+                    ON managed_channels(dispatcharr_channel_id)
+                """)
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_managed_channels_tvg
+                    ON managed_channels(tvg_id)
+                """)
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_managed_channels_sync
+                    ON managed_channels(sync_status)
+                """)
+                # Keep group-scoped unique index (changed to event-scoped in zo8.4)
+                conn.execute("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_mc_unique_event
+                    ON managed_channels(
+                        event_epg_group_id, event_id, event_provider,
+                        COALESCE(exception_keyword, ''), primary_stream_id
+                    )
+                    WHERE deleted_at IS NULL
+                """)
+                # Recreate trigger
+                conn.execute("""
+                    CREATE TRIGGER IF NOT EXISTS
+                        update_managed_channels_timestamp
+                    AFTER UPDATE ON managed_channels
+                    BEGIN
+                        UPDATE managed_channels
+                        SET updated_at = CURRENT_TIMESTAMP
+                        WHERE id = NEW.id;
+                    END
+                """)
+                # Add sport/league index for new primary access pattern
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS
+                        idx_managed_channels_sport_league
+                    ON managed_channels(sport, league)
+                    WHERE deleted_at IS NULL
+                """)
+                conn.execute("PRAGMA foreign_keys = ON")
+                logger.info(
+                    "[MIGRATE v63] Rebuilt managed_channels: "
+                    "event_epg_group_id nullable, FK ON DELETE SET NULL"
+                )
+            except sqlite3.OperationalError as e:
+                conn.execute("PRAGMA foreign_keys = ON")
+                # Old schemas may have different columns — clean up temp table
+                conn.execute(
+                    "DROP TABLE IF EXISTS managed_channels_new"
+                )
+                logger.warning(
+                    "[MIGRATE v63] Could not rebuild managed_channels "
+                    "(schema mismatch): %s", e
+                )
+
+        conn.execute("UPDATE settings SET schema_version = 63 WHERE id = 1")
+        logger.info(
+            "[MIGRATE] Schema upgraded to version 63 "
+            "(channel ownership: nullable source group)"
+        )
+        current_version = 63
+
 
 # =============================================================================
 # LEGACY MIGRATION HELPER FUNCTIONS

@@ -17,7 +17,7 @@ class ManagedChannel:
     """
 
     id: int
-    event_epg_group_id: int  # Source group (provenance, not ownership)
+    event_epg_group_id: int | None  # Source group (provenance, not ownership)
     event_id: str
     event_provider: str
     tvg_id: str
@@ -70,7 +70,7 @@ class ManagedChannel:
 
         return cls(
             id=row["id"],
-            event_epg_group_id=row["event_epg_group_id"],
+            event_epg_group_id=row.get("event_epg_group_id"),
             event_id=row["event_id"],
             event_provider=row["event_provider"],
             tvg_id=row["tvg_id"],
