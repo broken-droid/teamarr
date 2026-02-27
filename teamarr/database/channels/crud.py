@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def create_managed_channel(
     conn: Connection,
-    event_epg_group_id: int,
+    event_epg_group_id: int | None,
     event_id: str,
     event_provider: str,
     tvg_id: str,
@@ -28,7 +28,8 @@ def create_managed_channel(
 
     Args:
         conn: Database connection
-        event_epg_group_id: Source group ID (which group supplied the first stream — provenance)
+        event_epg_group_id: Source group ID (provenance — which group
+            supplied the first stream). May be None.
         event_id: Event ID from provider
         event_provider: Provider name (espn, tsdb, etc.)
         tvg_id: XMLTV TVG ID
@@ -40,13 +41,17 @@ def create_managed_channel(
     """
     # Build column list and values
     columns = [
-        "event_epg_group_id",
         "event_id",
         "event_provider",
         "tvg_id",
         "channel_name",
     ]
-    values = [event_epg_group_id, event_id, event_provider, tvg_id, channel_name]
+    values: list = [event_id, event_provider, tvg_id, channel_name]
+
+    # event_epg_group_id is optional (provenance, not ownership)
+    if event_epg_group_id is not None:
+        columns.append("event_epg_group_id")
+        values.append(event_epg_group_id)
 
     # Add optional fields
     allowed_fields = [
@@ -395,22 +400,19 @@ def mark_all_channels_deleted(conn: Connection) -> tuple[int, int]:
 
 def find_existing_channel(
     conn: Connection,
-    group_id: int,
     event_id: str,
     event_provider: str,
     exception_keyword: str | None = None,
     stream_id: int | None = None,
     mode: str = "consolidate",
 ) -> ManagedChannel | None:
-    """Find existing channel based on duplicate handling mode.
+    """Find existing channel by event identity (event-scoped).
 
-    Currently scoped by group_id for uniqueness. Will be refactored to
-    event-scoped lookups in zo8.3 (channel identity = event_id + provider
-    + exception_keyword + primary_stream_id).
+    Channel identity: (event_id, event_provider, exception_keyword, primary_stream_id).
+    Searches across ALL source groups — channels are owned by events, not groups.
 
     Args:
         conn: Database connection
-        group_id: Source group ID (used to scope lookup — will become optional)
         event_id: Event ID
         event_provider: Provider name
         exception_keyword: Exception keyword for separate consolidation
@@ -422,16 +424,14 @@ def find_existing_channel(
     """
     if mode == "separate":
         # In separate mode, each stream gets its own channel
-        # Look for channel with same primary stream
         if stream_id:
             cursor = conn.execute(
                 """SELECT * FROM managed_channels
-                   WHERE event_epg_group_id = ?
-                     AND event_id = ?
+                   WHERE event_id = ?
                      AND event_provider = ?
                      AND primary_stream_id = ?
                      AND deleted_at IS NULL""",
-                (group_id, event_id, event_provider, stream_id),
+                (event_id, event_provider, stream_id),
             )
             row = cursor.fetchone()
             if row:
@@ -442,12 +442,11 @@ def find_existing_channel(
         # In ignore mode, first stream wins - just check if any channel exists
         cursor = conn.execute(
             """SELECT * FROM managed_channels
-               WHERE event_epg_group_id = ?
-                 AND event_id = ?
+               WHERE event_id = ?
                  AND event_provider = ?
                  AND deleted_at IS NULL
                LIMIT 1""",
-            (group_id, event_id, event_provider),
+            (event_id, event_provider),
         )
         row = cursor.fetchone()
         if row:
@@ -459,22 +458,20 @@ def find_existing_channel(
         if exception_keyword:
             cursor = conn.execute(
                 """SELECT * FROM managed_channels
-                   WHERE event_epg_group_id = ?
-                     AND event_id = ?
+                   WHERE event_id = ?
                      AND event_provider = ?
                      AND exception_keyword = ?
                      AND deleted_at IS NULL""",
-                (group_id, event_id, event_provider, exception_keyword),
+                (event_id, event_provider, exception_keyword),
             )
         else:
             cursor = conn.execute(
                 """SELECT * FROM managed_channels
-                   WHERE event_epg_group_id = ?
-                     AND event_id = ?
+                   WHERE event_id = ?
                      AND event_provider = ?
                      AND exception_keyword IS NULL
                      AND deleted_at IS NULL""",
-                (group_id, event_id, event_provider),
+                (event_id, event_provider),
             )
         row = cursor.fetchone()
         if row:

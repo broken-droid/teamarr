@@ -481,8 +481,6 @@ class ChannelLifecycleService:
                 # Initialize dynamic resolver for this batch
                 self._dynamic_resolver.initialize(self._db_factory, conn)
 
-                # Get group settings
-                group_id = group_config.get("id")
                 # Global consolidation mode (v59) replaces per-group duplicate_event_handling
                 from teamarr.database.channel_numbers import get_global_consolidation_mode
                 duplicate_mode = get_global_consolidation_mode(conn)
@@ -592,11 +590,10 @@ class ChannelLifecycleService:
                             conn, event, template
                         )
 
-                        # Find existing channel based on mode
-                        # Use effective_event_id for segment-aware lookup
+                        # Find existing channel by event identity (event-scoped)
+                        # Searches across ALL groups — channels owned by events
                         existing = find_existing_channel(
                             conn=conn,
-                            group_id=group_id,
                             event_id=effective_event_id,
                             event_provider=event_provider,
                             exception_keyword=matched_keyword,
@@ -640,30 +637,6 @@ class ChannelLifecycleService:
                                 }
                             )
                             continue
-
-                        # Cross-group overlap: consolidate mode merges across groups
-                        # Global consolidation mode (v59) replaces per-group overlap_handling
-                        consolidation_mode = get_global_consolidation_mode(conn)
-
-                        if consolidation_mode == "consolidate":
-                            cross_group_result = self._handle_cross_group_overlap(
-                                conn=conn,
-                                event=event,
-                                stream=stream,
-                                group_id=group_id,
-                                matched_keyword=matched_keyword,
-                                overlap_handling="add_stream",
-                                group_config=group_config,
-                                template=event_template,
-                                segment=segment,
-                            )
-
-                            if cross_group_result is not None:
-                                # Stream was handled (added to existing or skipped)
-                                result.merge(cross_group_result)
-                                continue
-                            # cross_group_result is None means: no existing channel found,
-                            # fall through to create new channel
 
                         # Resolve dynamic channel group and profiles for this event
                         event_sport = getattr(event, "sport", None)
@@ -804,207 +777,6 @@ class ChannelLifecycleService:
             )
 
         return result
-
-    def _handle_cross_group_overlap(
-        self,
-        conn: Connection,
-        event: Event,
-        stream: dict,
-        group_id: int,
-        matched_keyword: str | None,
-        overlap_handling: str,
-        group_config: dict,
-        template: dict | None,
-        segment: str | None = None,
-    ) -> StreamProcessResult | None:
-        """Check if a channel already exists for this event from another source group.
-
-        When multiple source groups supply streams for the same event, this
-        method finds the existing channel and adds the stream to it. Event
-        groups are agnostic stream suppliers — the channel is owned by the
-        event identity (event_id + provider + exception_keyword), not by
-        any group.
-
-        Will be removed in zo8.3 when find_existing_channel becomes event-scoped.
-
-        - add_stream: Add to existing OR create new (returns None to create)
-        - add_only: Add to existing OR skip (never create new)
-        - skip: Skip if existing found, create if not (returns None to create)
-        - create_all: Not called (handled by caller)
-
-        Args:
-            conn: Database connection
-            event: Event to check
-            stream: Stream data
-            group_id: Current source group ID (to exclude from search)
-            matched_keyword: Exception keyword if matched
-            overlap_handling: One of add_stream, add_only, skip
-            group_config: Full group configuration
-            template: Template configuration
-            segment: UFC card segment (e.g., "prelims", "main_card")
-
-        Returns:
-            StreamProcessResult if stream was handled (added/skipped)
-            None if no existing channel found and should create new
-        """
-        from teamarr.database.channels import (
-            add_stream_to_channel,
-            compute_stream_priority_from_rules,
-            find_any_channel_for_event,
-            get_next_stream_priority,
-            get_ordered_stream_ids,
-            log_channel_history,
-            stream_exists_on_channel,
-        )
-
-        stream_name = stream.get("name", "")
-        stream_id = stream.get("id")
-        # Use segment-aware event_id for UFC segments
-        event_id = f"{event.id}-{segment}" if segment else event.id
-        event_provider = getattr(event, "provider", "espn")
-
-        # First try to find channel with matching keyword (or no keyword)
-        existing = find_any_channel_for_event(
-            conn=conn,
-            event_id=event_id,
-            event_provider=event_provider,
-            exclude_group_id=group_id,
-            exception_keyword=matched_keyword,  # None for non-keyword streams
-        )
-
-        # If no exact match, fall back to any channel for the event
-        # This allows non-keyword streams to use keyword channels as last resort
-        if not existing:
-            existing = find_any_channel_for_event(
-                conn=conn,
-                event_id=event_id,
-                event_provider=event_provider,
-                exclude_group_id=group_id,
-                any_keyword=True,
-            )
-
-        if existing:
-            # Found existing channel for this event (from another source group)
-            if overlap_handling == "skip":
-                # Skip mode: don't add stream, don't create channel
-                result = StreamProcessResult()
-                result.skipped.append(
-                    {
-                        "stream": stream_name,
-                        "event_id": event_id,
-                        "reason": "channel_exists_for_event",
-                        "existing_channel_id": existing.id,
-                        "source_group_id": existing.event_epg_group_id,
-                    }
-                )
-                logger.debug(
-                    "Skipped '%s' - channel already exists for event"
-                    " (source group %s)",
-                    stream_name,
-                    existing.event_epg_group_id,
-                )
-                return result
-            else:
-                # add_stream or add_only: add stream to existing channel
-                result = StreamProcessResult()
-
-                if stream_exists_on_channel(conn, existing.id, stream_id):
-                    result.existing.append(
-                        {
-                            "stream": stream_name,
-                            "channel_id": existing.id,
-                            "channel_number": existing.channel_number,
-                            "action": "already_present",
-                        }
-                    )
-                    return result
-
-                # Add stream to existing channel
-                # Compute priority from ordering rules (or use sequential if no rules)
-                m3u_account_name = group_config.get("m3u_account_name")
-                priority = compute_stream_priority_from_rules(
-                    conn, stream_name, m3u_account_name, group_id
-                )
-                if priority is None:
-                    priority = get_next_stream_priority(conn, existing.id)
-                add_stream_to_channel(
-                    conn=conn,
-                    managed_channel_id=existing.id,
-                    dispatcharr_stream_id=stream_id,
-                    source_group_id=group_id,
-                    source_group_type="cross_group",
-                    stream_name=stream_name,
-                    m3u_account_id=group_config.get("m3u_account_id"),
-                    m3u_account_name=m3u_account_name,
-                    priority=priority,
-                )
-
-                # Sync with Dispatcharr - use ordered stream list to respect rules
-                if self._channel_manager and existing.dispatcharr_channel_id:
-                    ordered_streams = get_ordered_stream_ids(conn, existing.id)
-                    with self._dispatcharr_lock:
-                        api_ok = self._safe_update_channel(
-                            existing.dispatcharr_channel_id,
-                            {"streams": tuple(ordered_streams)},
-                            "cross-group stream add",
-                        )
-                    if not api_ok:
-                        # Roll back the DB insert so drift is retried next run
-                        from teamarr.database.channels import remove_stream_from_channel
-
-                        remove_stream_from_channel(conn, existing.id, stream_id)
-                        result = StreamProcessResult()
-                        result.errors.append(
-                            {
-                                "stream": stream_name,
-                                "event_id": event_id,
-                                "error": "Dispatcharr update failed (cross-group stream add)",
-                            }
-                        )
-                        return result
-
-                log_channel_history(
-                    conn=conn,
-                    managed_channel_id=existing.id,
-                    change_type="stream_added",
-                    change_source="cross_group_enforcement",
-                    notes=f"Added '{stream_name}' from multi-league group {group_id}",
-                )
-
-                result.existing.append(
-                    {
-                        "stream": stream_name,
-                        "channel_id": existing.id,
-                        "channel_number": existing.channel_number,
-                        "action": "added_cross_group",
-                        "source_group_id": group_id,
-                    }
-                )
-
-                logger.debug(
-                    f"Added '{stream_name}' to existing channel #{existing.channel_number} "
-                    f"(cross-group from {group_id})"
-                )
-                return result
-
-        else:
-            # No existing channel found for this event
-            if overlap_handling == "add_only":
-                # add_only mode: don't create new channel, skip stream
-                result = StreamProcessResult()
-                result.skipped.append(
-                    {
-                        "stream": stream_name,
-                        "event_id": event_id,
-                        "reason": "no_existing_channel_for_add_only",
-                    }
-                )
-                logger.debug(f"Skipped '{stream_name}' - add_only mode and no existing channel")
-                return result
-            else:
-                # add_stream or skip mode with no existing channel: create new
-                # Return None to signal caller should create channel
-                return None
 
     def _handle_existing_channel(
         self,
