@@ -565,7 +565,7 @@ CREATE TABLE IF NOT EXISTS managed_channels (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    -- Parent Group
+    -- Source Group (which event group supplied the first matched stream — provenance, not ownership)
     event_epg_group_id INTEGER NOT NULL,
 
     -- Event Reference (provider-agnostic)
@@ -583,7 +583,7 @@ CREATE TABLE IF NOT EXISTS managed_channels (
     dispatcharr_uuid TEXT,                   -- Dispatcharr's immutable UUID
     dispatcharr_logo_id INTEGER,             -- Uploaded logo ID in Dispatcharr
 
-    -- Channel Settings (from group config)
+    -- Channel Settings (resolved from subscription config)
     channel_group_id INTEGER,                -- Dispatcharr channel group
     channel_profile_ids TEXT,                -- JSON array of channel profile IDs
 

@@ -10,10 +10,14 @@ from datetime import datetime
 
 @dataclass
 class ManagedChannel:
-    """A managed channel from the database."""
+    """A managed channel owned by an event.
+
+    Channel identity: (event_id, event_provider, exception_keyword, primary_stream_id).
+    The event_epg_group_id tracks which source group supplied the first stream (provenance).
+    """
 
     id: int
-    event_epg_group_id: int
+    event_epg_group_id: int  # Source group (provenance, not ownership)
     event_id: str
     event_provider: str
     tvg_id: str

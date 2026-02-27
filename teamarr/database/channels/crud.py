@@ -28,7 +28,7 @@ def create_managed_channel(
 
     Args:
         conn: Database connection
-        event_epg_group_id: Parent group ID
+        event_epg_group_id: Source group ID (which group supplied the first stream — provenance)
         event_id: Event ID from provider
         event_provider: Provider name (espn, tsdb, etc.)
         tvg_id: XMLTV TVG ID
@@ -199,11 +199,14 @@ def get_managed_channels_for_group(
     group_id: int,
     include_deleted: bool = False,
 ) -> list[ManagedChannel]:
-    """Get all managed channels for a group.
+    """Get managed channels whose first stream came from a specific source group.
+
+    Filters by event_epg_group_id (stream provenance). This is a secondary
+    access pattern — the primary query should be by sport/league or event.
 
     Args:
         conn: Database connection
-        group_id: Event EPG group ID
+        group_id: Source group ID to filter by
         include_deleted: Whether to include deleted channels
 
     Returns:
@@ -401,9 +404,13 @@ def find_existing_channel(
 ) -> ManagedChannel | None:
     """Find existing channel based on duplicate handling mode.
 
+    Currently scoped by group_id for uniqueness. Will be refactored to
+    event-scoped lookups in zo8.3 (channel identity = event_id + provider
+    + exception_keyword + primary_stream_id).
+
     Args:
         conn: Database connection
-        group_id: Event EPG group ID
+        group_id: Source group ID (used to scope lookup — will become optional)
         event_id: Event ID
         event_provider: Provider name
         exception_keyword: Exception keyword for separate consolidation
@@ -485,16 +492,17 @@ def find_any_channel_for_event(
     exception_keyword: str | None = None,
     any_keyword: bool = False,
 ) -> ManagedChannel | None:
-    """Find any group's channel for an event (used for cross-group consolidation).
+    """Find any existing channel for an event across all source groups.
 
-    Used by multi-league groups to check if a single-league group already
-    has a channel for the same event, enabling stream consolidation.
+    Checks if a channel already exists for this event, regardless of which
+    group supplied the initial stream. Used during stream processing to
+    consolidate streams onto existing event channels.
 
     Args:
         conn: Database connection
         event_id: Event ID
         event_provider: Provider name
-        exclude_group_id: Optional group ID to exclude from search
+        exclude_group_id: Optional source group ID to exclude from search
         exception_keyword: If set, match channels with this keyword
         any_keyword: If True, match any channel regardless of keyword
 

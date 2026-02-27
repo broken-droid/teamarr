@@ -1,17 +1,22 @@
-"""Cross-group consolidation enforcement.
+"""Cross-group stream consolidation enforcement.
 
-When multiple groups have channels for the same event, consolidates
-streams into one channel based on group priority.
+Post-hoc cleanup: when multiple source groups have created separate channels
+for the same event, consolidates streams into one channel and deletes
+duplicates. Priority is determined by group sort_order (lower wins).
 
-Use case:
-- Multi-league group (ESPN+) matches an NHL game
-- Single-league group (NHL) also has that game
-- Move ESPN+ streams to NHL channel, delete ESPN+ channel
+NOTE: This module exists because channel lookups are currently group-scoped.
+Once channel identity becomes event-scoped (zo8.3/zo8.4), duplicate channels
+across groups will no longer be created, and this module becomes a no-op for
+consolidate mode. See epic teamarrv2-zo8 for the full plan.
 
-Respects overlap_handling per group:
-- create_all: Keep separate channels, no consolidation
-- skip: Delete channel but don't move streams
-- add_stream/add_only: Move streams then delete (default)
+Use case (current architecture):
+- Source group A (ESPN+) matches an NHL game -> creates channel
+- Source group B (NHL streams) also matches same game -> creates another channel
+- This module merges B's streams into A's channel and deletes B's channel
+
+Respects global consolidation mode:
+- consolidate: Merge streams, delete duplicate (default)
+- separate: Skip — separate channels per stream are expected
 """
 
 import logging
@@ -55,15 +60,15 @@ class CrossGroupResult:
 
 
 class CrossGroupEnforcer:
-    """Enforces cross-group stream consolidation.
+    """Post-hoc stream consolidation across source groups.
 
-    Identifies when multiple groups have channels for the same event
-    and consolidates them based on group sort_order priority:
-    - Lower sort_order wins (user-configurable)
-    - Earlier-created channels break ties
+    When group-scoped channel creation produces duplicate channels for the
+    same event (from different source groups), this enforcer merges streams
+    into the highest-priority channel and deletes the duplicates.
 
-    The lower-priority channel's streams are moved to the higher-priority
-    channel, and the lower-priority channel is deleted.
+    Priority: group sort_order (lower wins), created_at as tiebreak.
+
+    Will become a no-op once channel lookups are event-scoped (zo8.3/zo8.4).
     """
 
     def __init__(

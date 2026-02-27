@@ -817,11 +817,15 @@ class ChannelLifecycleService:
         template: dict | None,
         segment: str | None = None,
     ) -> StreamProcessResult | None:
-        """Handle cross-group overlap for multi-league groups.
+        """Check if a channel already exists for this event from another source group.
 
-        Multi-league groups are processed LAST, so single-league channels
-        should already exist. This method checks for existing channels in
-        OTHER groups and handles based on overlap_handling mode:
+        When multiple source groups supply streams for the same event, this
+        method finds the existing channel and adds the stream to it. Event
+        groups are agnostic stream suppliers — the channel is owned by the
+        event identity (event_id + provider + exception_keyword), not by
+        any group.
+
+        Will be removed in zo8.3 when find_existing_channel becomes event-scoped.
 
         - add_stream: Add to existing OR create new (returns None to create)
         - add_only: Add to existing OR skip (never create new)
@@ -832,7 +836,7 @@ class ChannelLifecycleService:
             conn: Database connection
             event: Event to check
             stream: Stream data
-            group_id: Current group ID (to exclude from search)
+            group_id: Current source group ID (to exclude from search)
             matched_keyword: Exception keyword if matched
             overlap_handling: One of add_stream, add_only, skip
             group_config: Full group configuration
@@ -880,7 +884,7 @@ class ChannelLifecycleService:
             )
 
         if existing:
-            # Found existing channel in another group
+            # Found existing channel for this event (from another source group)
             if overlap_handling == "skip":
                 # Skip mode: don't add stream, don't create channel
                 result = StreamProcessResult()
@@ -888,13 +892,16 @@ class ChannelLifecycleService:
                     {
                         "stream": stream_name,
                         "event_id": event_id,
-                        "reason": "event_owned_by_other_group",
+                        "reason": "channel_exists_for_event",
                         "existing_channel_id": existing.id,
-                        "existing_group_id": existing.event_epg_group_id,
+                        "source_group_id": existing.event_epg_group_id,
                     }
                 )
                 logger.debug(
-                    f"Skipped '{stream_name}' - event owned by group {existing.event_epg_group_id}"
+                    "Skipped '%s' - channel already exists for event"
+                    " (source group %s)",
+                    stream_name,
+                    existing.event_epg_group_id,
                 )
                 return result
             else:
@@ -981,7 +988,7 @@ class ChannelLifecycleService:
                 return result
 
         else:
-            # No existing channel found in other groups
+            # No existing channel found for this event
             if overlap_handling == "add_only":
                 # add_only mode: don't create new channel, skip stream
                 result = StreamProcessResult()
