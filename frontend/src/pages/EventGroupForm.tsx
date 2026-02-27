@@ -42,7 +42,6 @@ export function EventGroupForm() {
     display_name: null,  // Optional display name override
     leagues: [],
     parent_group_id: null,
-    template_id: null,
     sort_order: 0,
     total_stream_count: 0,
     m3u_group_id: m3uGroupId ? Number(m3uGroupId) : null,
@@ -131,7 +130,6 @@ export function EventGroupForm() {
         display_name: group.display_name,
         leagues: group.leagues,
         parent_group_id: group.parent_group_id,
-        template_id: group.template_id,
         stream_timezone: group.stream_timezone,  // Keep null = "auto-detect from stream"
         sort_order: group.sort_order,
         total_stream_count: group.total_stream_count,

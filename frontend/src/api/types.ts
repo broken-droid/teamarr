@@ -24,8 +24,6 @@ export interface EventGroup {
   soccer_followed_teams: SoccerFollowedTeam[] | null  // Teams to follow (for teams mode)
   group_mode: string  // "single" or "multi" - persisted to preserve user intent
   parent_group_id: number | null
-  template_id: number | null
-  group_template_count: number  // Count of templates via Manage Templates
   stream_timezone: string | null  // IANA timezone for interpreting stream dates (e.g., 'America/New_York')
   channel_assignment_mode: string
   sort_order: number
@@ -93,7 +91,6 @@ export interface EventGroupCreate {
   soccer_followed_teams?: SoccerFollowedTeam[] | null  // Teams to follow (for teams mode)
   group_mode?: string  // "single" or "multi" - persisted to preserve user intent
   parent_group_id?: number | null
-  template_id?: number | null
   stream_timezone?: string | null  // IANA timezone for interpreting stream dates
   channel_assignment_mode?: string
   sort_order?: number
@@ -131,18 +128,11 @@ export interface EventGroupCreate {
   subscription_leagues?: string[] | null
   subscription_soccer_mode?: 'all' | 'teams' | 'manual' | null
   subscription_soccer_followed_teams?: SoccerFollowedTeam[] | null
-  // Template assignments for multi-league groups (created with the group)
-  template_assignments?: Array<{
-    template_id: number
-    sports?: string[] | null
-    leagues?: string[] | null
-  }>
 }
 
 export interface EventGroupUpdate extends Partial<EventGroupCreate> {
   clear_display_name?: boolean
   clear_parent_group_id?: boolean
-  clear_template?: boolean
   clear_stream_timezone?: boolean
   clear_m3u_group_id?: boolean
   clear_m3u_group_name?: boolean
@@ -173,9 +163,7 @@ export interface EventGroupListResponse {
 export interface BulkGroupUpdateRequest {
   group_ids: number[]
   leagues?: string[]
-  template_id?: number | null
   stream_timezone?: string | null  // IANA timezone for interpreting stream dates
-  clear_template?: boolean
   clear_stream_timezone?: boolean
   // Team filtering
   include_teams?: TeamFilterEntry[] | null

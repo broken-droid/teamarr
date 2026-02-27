@@ -59,7 +59,6 @@ class GroupCreate(BaseModel):
     soccer_followed_teams: list[SoccerFollowedTeam] | None = None
     group_mode: str = "multi"
     parent_group_id: int | None = None
-    template_id: int | None = None
     channel_start_number: int | None = Field(None, ge=1)
     stream_timezone: str | None = None  # Timezone for stream datetime parsing
     duplicate_event_handling: str = "consolidate"
@@ -100,8 +99,6 @@ class GroupCreate(BaseModel):
     subscription_leagues: list[str] | None = None
     subscription_soccer_mode: str | None = None
     subscription_soccer_followed_teams: list[SoccerFollowedTeam] | None = None
-    # Deprecated: template_assignments now managed via subscription_templates
-    template_assignments: list["GroupTemplateCreate"] | None = None
 
 
 class GroupUpdate(BaseModel):
@@ -114,7 +111,6 @@ class GroupUpdate(BaseModel):
     soccer_followed_teams: list[SoccerFollowedTeam] | None = None  # Teams to follow
     group_mode: str | None = None  # "single" or "multi" - persisted to preserve user intent
     parent_group_id: int | None = None
-    template_id: int | None = None
     channel_start_number: int | None = None
     stream_timezone: str | None = None  # Timezone for stream datetime parsing
     duplicate_event_handling: str | None = None
@@ -159,7 +155,6 @@ class GroupUpdate(BaseModel):
     # Clear flags for nullable fields
     clear_display_name: bool = False
     clear_parent_group_id: bool = False
-    clear_template: bool = False
     clear_channel_start_number: bool = False
     clear_stream_timezone: bool = False
     clear_m3u_group_id: bool = False
@@ -195,8 +190,6 @@ class GroupResponse(BaseModel):
     soccer_followed_teams: list[SoccerFollowedTeam] | None = None
     group_mode: str = "multi"
     parent_group_id: int | None = None
-    template_id: int | None = None
-    group_template_count: int = 0
     channel_start_number: int | None = None
     stream_timezone: str | None = None  # Timezone for stream datetime parsing
     duplicate_event_handling: str = "consolidate"
@@ -301,14 +294,6 @@ class BulkGroupItem(BaseModel):
     m3u_account_name: str
 
 
-class BulkTemplateAssignmentCreate(BaseModel):
-    """Template assignment for bulk group creation."""
-
-    template_id: int
-    sports: list[str] | None = None
-    leagues: list[str] | None = None
-
-
 class BulkGroupSettings(BaseModel):
     """Shared settings for bulk group creation."""
 
@@ -317,8 +302,6 @@ class BulkGroupSettings(BaseModel):
     leagues: list[str] = Field(default_factory=list)
     soccer_mode: str | None = None
     soccer_followed_teams: list[SoccerFollowedTeam] | None = None
-    template_id: int | None = None
-    template_assignments: list[BulkTemplateAssignmentCreate] | None = None
     stream_timezone: str | None = None  # Timezone for stream datetime parsing
     duplicate_event_handling: str = "consolidate"
     channel_sort_order: str = "time"
@@ -366,7 +349,6 @@ class BulkGroupUpdateRequest(BaseModel):
     leagues: list[str] | None = None
     soccer_mode: str | None = None  # 'all', 'teams', 'manual', or None (non-soccer)
     soccer_followed_teams: list[SoccerFollowedTeam] | None = None  # Teams to follow
-    template_id: int | None = None
     stream_timezone: str | None = None  # Timezone for stream datetime parsing
     duplicate_event_handling: str | None = None
     channel_sort_order: str | None = None
@@ -380,7 +362,6 @@ class BulkGroupUpdateRequest(BaseModel):
     bypass_filter_for_playoffs: bool | None = None
 
     # Clear flags to explicitly set fields to NULL
-    clear_template: bool = False
     clear_stream_timezone: bool = False
     clear_soccer_mode: bool = False
     clear_soccer_followed_teams: bool = False
@@ -498,11 +479,6 @@ def list_groups(
         if include_stats:
             stats = get_all_group_stats(conn)
 
-        # Get group_templates counts for all groups
-        from teamarr.database.groups import get_group_template_counts
-
-        group_template_counts = get_group_template_counts(conn)
-
     # Fetch fresh M3U account names from Dispatcharr
     m3u_account_names: dict[int, str] = {}
     account_ids = {g.m3u_account_id for g in groups if g.m3u_account_id}
@@ -534,8 +510,6 @@ def list_groups(
                 else None,
                 group_mode=g.group_mode,
                 parent_group_id=g.parent_group_id,
-                template_id=g.template_id,
-                group_template_count=group_template_counts.get(g.id, 0),
                 channel_start_number=g.channel_start_number,
                 duplicate_event_handling=g.duplicate_event_handling,
                 channel_assignment_mode=g.channel_assignment_mode,
@@ -607,7 +581,6 @@ def list_groups(
 def create_group(request: GroupCreate):
     """Create a new event EPG group."""
     from teamarr.database.groups import (
-        add_group_template,
         create_group,
         get_group,
         get_group_by_name,
@@ -636,7 +609,6 @@ def create_group(request: GroupCreate):
             else None,
             group_mode="multi",  # Hardcoded — hierarchy removed in v58
             parent_group_id=None,  # Hardcoded — hierarchy removed in v58
-            template_id=request.template_id,
             channel_start_number=None,  # Deprecated — global mode in v59
             stream_timezone=request.stream_timezone,
             duplicate_event_handling="consolidate",  # Deprecated — global mode in v59
@@ -683,17 +655,6 @@ def create_group(request: GroupCreate):
             else None,
         )
 
-        # Create template assignments if provided (for multi-league groups)
-        if request.template_assignments:
-            for assignment in request.template_assignments:
-                add_group_template(
-                    conn,
-                    group_id,
-                    assignment.template_id,
-                    assignment.sports,
-                    assignment.leagues,
-                )
-
         group = get_group(conn, group_id)
 
     logger.info("[CREATED] Event group id=%d name=%s", group_id, request.name)
@@ -709,7 +670,6 @@ def create_group(request: GroupCreate):
         else None,
         group_mode=group.group_mode,
         parent_group_id=group.parent_group_id,
-        template_id=group.template_id,
         channel_start_number=group.channel_start_number,
         stream_timezone=group.stream_timezone,
         duplicate_event_handling=group.duplicate_event_handling,
@@ -780,7 +740,7 @@ def create_groups_bulk(request: BulkGroupCreateRequest):
     All groups will be created with the same mode, leagues, and settings.
     Useful for importing multiple groups from the same M3U account.
     """
-    from teamarr.database.groups import add_group_template, create_group, get_group_by_name
+    from teamarr.database.groups import create_group, get_group_by_name
 
     # Validate settings
     validate_group_fields(
@@ -811,12 +771,6 @@ def create_groups_bulk(request: BulkGroupCreateRequest):
                     total_failed += 1
                     continue
 
-                # Create the group
-                # Use legacy template_id only if no template_assignments provided
-                legacy_template_id = request.settings.template_id
-                if request.settings.template_assignments:
-                    legacy_template_id = None  # Use group_templates instead
-
                 group_id = create_group(
                     conn,
                     name=item.m3u_group_name,
@@ -828,7 +782,6 @@ def create_groups_bulk(request: BulkGroupCreateRequest):
                         else None
                     ),
                     group_mode="multi",  # Hardcoded — hierarchy removed in v58
-                    template_id=legacy_template_id,
                     stream_timezone=request.settings.stream_timezone,
                     duplicate_event_handling=request.settings.duplicate_event_handling,
                     channel_sort_order=request.settings.channel_sort_order,
@@ -839,17 +792,6 @@ def create_groups_bulk(request: BulkGroupCreateRequest):
                     m3u_account_name=item.m3u_account_name,
                     enabled=request.settings.enabled,
                 )
-
-                # Add template assignments if provided
-                if request.settings.template_assignments:
-                    for assignment in request.settings.template_assignments:
-                        add_group_template(
-                            conn,
-                            group_id=group_id,
-                            template_id=assignment.template_id,
-                            sports=assignment.sports,
-                            leagues=assignment.leagues,
-                        )
 
                 results.append(
                     BulkGroupCreateResult(
@@ -929,13 +871,11 @@ def update_groups_bulk(request: BulkGroupUpdateRequest):
                     soccer_followed_teams=[t.model_dump() for t in request.soccer_followed_teams]
                     if request.soccer_followed_teams
                     else None,
-                    template_id=request.template_id,
                     stream_timezone=request.stream_timezone,
                     duplicate_event_handling=request.duplicate_event_handling,
                     channel_sort_order=request.channel_sort_order,
                     overlap_handling=request.overlap_handling,
                     enabled=request.enabled,
-                    clear_template=request.clear_template,
                     clear_stream_timezone=request.clear_stream_timezone,
                     clear_soccer_mode=request.clear_soccer_mode,
                     clear_soccer_followed_teams=request.clear_soccer_followed_teams,
@@ -995,44 +935,6 @@ def update_groups_bulk(request: BulkGroupUpdateRequest):
     )
 
 
-# =============================================================================
-# Bulk Template Assignments
-# =============================================================================
-
-
-class BulkTemplateAssignment(BaseModel):
-    """A single template assignment in a bulk request."""
-
-    template_id: int
-    sports: list[str] | None = None
-    leagues: list[str] | None = None
-
-
-class BulkTemplatesRequest(BaseModel):
-    """Request to set template assignments for multiple groups."""
-
-    group_ids: list[int]
-    assignments: list[BulkTemplateAssignment]
-
-
-class BulkTemplatesResponse(BaseModel):
-    """Response from bulk template assignment."""
-
-    success: bool
-    groups_updated: int
-    assignments_per_group: int
-    message: str
-
-
-@router.put("/bulk-templates", deprecated=True)
-def bulk_set_group_templates():
-    """Deprecated: Use /api/v1/subscription-templates instead."""
-    raise HTTPException(
-        status_code=status.HTTP_410_GONE,
-        detail="Deprecated: use /api/v1/subscription-templates instead",
-    )
-
-
 class MatchCacheStatsResponse(BaseModel):
     """Response for stream match cache statistics."""
 
@@ -1089,7 +991,6 @@ def get_group_by_id(group_id: int):
         else None,
         group_mode=group.group_mode,
         parent_group_id=group.parent_group_id,
-        template_id=group.template_id,
         channel_start_number=group.channel_start_number,
         stream_timezone=group.stream_timezone,
         duplicate_event_handling=group.duplicate_event_handling,
@@ -1205,7 +1106,6 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
                 else None,
                 group_mode="multi",  # Hardcoded — hierarchy removed in v58
                 parent_group_id=None,  # Hardcoded — hierarchy removed in v58
-                template_id=request.template_id,
                 channel_start_number=request.channel_start_number,
                 stream_timezone=request.stream_timezone,
                 duplicate_event_handling=None,  # Deprecated — global consolidation in v59
@@ -1245,7 +1145,6 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
                 enabled=request.enabled,
                 clear_display_name=request.clear_display_name,
                 clear_parent_group_id=request.clear_parent_group_id,
-                clear_template=request.clear_template,
                 clear_channel_start_number=request.clear_channel_start_number,
                 clear_stream_timezone=request.clear_stream_timezone,
                 clear_m3u_group_id=request.clear_m3u_group_id,
@@ -1303,7 +1202,6 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
         else None,
         group_mode=group.group_mode,
         parent_group_id=group.parent_group_id,
-        template_id=group.template_id,
         channel_start_number=group.channel_start_number,
         stream_timezone=group.stream_timezone,
         duplicate_event_handling=group.duplicate_event_handling,
@@ -1884,75 +1782,4 @@ def get_combined_xmltv() -> Response:
         content=combined,
         media_type="application/xml",
         headers={"Content-Disposition": "inline; filename=teamarr-events.xml"},
-    )
-
-
-# ========================================================================
-
-
-# =============================================================================
-# GROUP TEMPLATES - Multi-template assignment per group
-# =============================================================================
-
-
-class GroupTemplateCreate(BaseModel):
-    """Create a template assignment for a group."""
-
-    template_id: int
-    sports: list[str] | None = None  # NULL = any, or ["mma", "boxing"]
-    leagues: list[str] | None = None  # NULL = any, or ["ufc", "bellator"]
-
-
-class GroupTemplateUpdate(BaseModel):
-    """Update a template assignment."""
-
-    template_id: int | None = None
-    sports: list[str] | None = None
-    leagues: list[str] | None = None
-
-
-class GroupTemplateResponse(BaseModel):
-    """Template assignment response."""
-
-    id: int
-    group_id: int
-    template_id: int
-    sports: list[str] | None = None
-    leagues: list[str] | None = None
-    template_name: str | None = None
-
-
-@router.get("/{group_id}/templates", deprecated=True)
-def get_group_templates(group_id: int):
-    """Deprecated: Use GET /api/v1/subscription-templates instead."""
-    raise HTTPException(
-        status_code=status.HTTP_410_GONE,
-        detail="Deprecated: use GET /api/v1/subscription-templates instead",
-    )
-
-
-@router.post("/{group_id}/templates", deprecated=True)
-def add_group_template(group_id: int):
-    """Deprecated: Use POST /api/v1/subscription-templates instead."""
-    raise HTTPException(
-        status_code=status.HTTP_410_GONE,
-        detail="Deprecated: use POST /api/v1/subscription-templates instead",
-    )
-
-
-@router.put("/{group_id}/templates/{assignment_id}", deprecated=True)
-def update_group_template(group_id: int, assignment_id: int):
-    """Deprecated: Use PUT /api/v1/subscription-templates/{id} instead."""
-    raise HTTPException(
-        status_code=status.HTTP_410_GONE,
-        detail="Deprecated: use PUT /api/v1/subscription-templates/{id} instead",
-    )
-
-
-@router.delete("/{group_id}/templates/{assignment_id}", deprecated=True)
-def delete_group_template(group_id: int, assignment_id: int):
-    """Deprecated: Use DELETE /api/v1/subscription-templates/{id} instead."""
-    raise HTTPException(
-        status_code=status.HTTP_410_GONE,
-        detail="Deprecated: use DELETE /api/v1/subscription-templates/{id} instead",
     )

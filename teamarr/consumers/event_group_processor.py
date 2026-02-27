@@ -2145,7 +2145,7 @@ class EventGroupProcessor:
             return "", 0, 0, 0, 0
 
         # Load template options if configured
-        # Check both direct template_id and group_templates table
+        # Resolve template from global subscription
         options = EventEPGOptions()
         filler_config: EventFillerConfig | None = None
         template_db = None

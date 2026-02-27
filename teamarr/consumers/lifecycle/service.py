@@ -379,18 +379,16 @@ class ChannelLifecycleService:
     def _resolve_event_template(
         self,
         conn: Connection,
-        group_id: int,
         event,
         fallback_template,
     ):
         """Resolve the best template for a specific event.
 
-        Uses sport/league-specific templates from group_templates table if configured,
+        Uses sport/league-specific templates from global subscription_templates,
         otherwise falls back to the provided fallback_template.
 
         Args:
             conn: Database connection
-            group_id: Event EPG group ID
             event: Event object with sport and league attributes
             fallback_template: Template to use if no specific template found
 
@@ -591,7 +589,7 @@ class ChannelLifecycleService:
 
                         # Resolve template for this specific event (may be sport/league-specific)
                         event_template = self._resolve_event_template(
-                            conn, group_id, event, template
+                            conn, event, template
                         )
 
                         # Find existing channel based on mode
