@@ -22,8 +22,6 @@ export interface EventGroup {
   leagues: string[]
   soccer_mode: 'all' | 'teams' | 'manual' | null  // Soccer selection mode (null for non-soccer)
   soccer_followed_teams: SoccerFollowedTeam[] | null  // Teams to follow (for teams mode)
-  group_mode: string  // "single" or "multi" - persisted to preserve user intent
-  parent_group_id: number | null
   stream_timezone: string | null  // IANA timezone for interpreting stream dates (e.g., 'America/New_York')
   channel_assignment_mode: string
   sort_order: number
@@ -89,8 +87,6 @@ export interface EventGroupCreate {
   leagues: string[]
   soccer_mode?: 'all' | 'teams' | 'manual' | null  // Soccer selection mode (null for non-soccer)
   soccer_followed_teams?: SoccerFollowedTeam[] | null  // Teams to follow (for teams mode)
-  group_mode?: string  // "single" or "multi" - persisted to preserve user intent
-  parent_group_id?: number | null
   stream_timezone?: string | null  // IANA timezone for interpreting stream dates
   channel_assignment_mode?: string
   sort_order?: number
@@ -132,7 +128,6 @@ export interface EventGroupCreate {
 
 export interface EventGroupUpdate extends Partial<EventGroupCreate> {
   clear_display_name?: boolean
-  clear_parent_group_id?: boolean
   clear_stream_timezone?: boolean
   clear_m3u_group_id?: boolean
   clear_m3u_group_name?: boolean

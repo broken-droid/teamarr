@@ -352,14 +352,12 @@ def create_group(
     display_name: str | None = None,
     soccer_mode: str | None = None,
     soccer_followed_teams: list[dict] | None = None,
-    group_mode: str = "single",
     channel_start_number: int | None = None,
     stream_timezone: str | None = None,
     duplicate_event_handling: str = "consolidate",
     channel_assignment_mode: str = "auto",
     sort_order: int = 0,
     total_stream_count: int = 0,
-    parent_group_id: int | None = None,
     m3u_group_id: int | None = None,
     m3u_group_name: str | None = None,
     m3u_account_id: int | None = None,
@@ -407,7 +405,6 @@ def create_group(
         channel_assignment_mode: 'auto' or 'manual'
         sort_order: Ordering for AUTO channel allocation
         total_stream_count: Expected streams for range reservation
-        parent_group_id: Parent group for child relationships
         m3u_group_id: M3U group ID to scan
         m3u_group_name: M3U group name
         m3u_account_id: M3U account ID
@@ -422,17 +419,16 @@ def create_group(
         max_order = conn.execute(
             """SELECT COALESCE(MAX(sort_order), -1) + 1
                FROM event_epg_groups
-               WHERE channel_assignment_mode = 'auto'
-                 AND parent_group_id IS NULL"""
+               WHERE channel_assignment_mode = 'auto'"""
         ).fetchone()[0]
         sort_order = max_order
 
     cursor = conn.execute(
         """INSERT INTO event_epg_groups (
-            name, display_name, leagues, soccer_mode, soccer_followed_teams, group_mode,
-            channel_start_number,
+            name, display_name, leagues, soccer_mode, soccer_followed_teams,
+            group_mode, channel_start_number,
             stream_timezone, duplicate_event_handling,
-            channel_assignment_mode, sort_order, total_stream_count, parent_group_id,
+            channel_assignment_mode, sort_order, total_stream_count,
             m3u_group_id, m3u_group_name, m3u_account_id, m3u_account_name,
             stream_include_regex, stream_include_regex_enabled,
             stream_exclude_regex, stream_exclude_regex_enabled,
@@ -446,21 +442,20 @@ def create_group(
             include_teams, exclude_teams, team_filter_mode,
             channel_sort_order, overlap_handling, enabled,
             subscription_leagues, subscription_soccer_mode, subscription_soccer_followed_teams
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",  # noqa: E501
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",  # noqa: E501
         (
             name,
             display_name,
             json.dumps(leagues),
             soccer_mode,
             json.dumps(soccer_followed_teams) if soccer_followed_teams else None,
-            group_mode,
+            "multi",  # Hardcoded — hierarchy removed in v58
             channel_start_number,
             stream_timezone,
             duplicate_event_handling,
             channel_assignment_mode,
             sort_order,
             total_stream_count,
-            parent_group_id,
             m3u_group_id,
             m3u_group_name,
             m3u_account_id,
@@ -512,14 +507,12 @@ def update_group(
     leagues: list[str] | None = None,
     soccer_mode: str | None = None,
     soccer_followed_teams: list[dict] | None = None,
-    group_mode: str | None = None,
     channel_start_number: int | None = None,
     stream_timezone: str | None = None,
     duplicate_event_handling: str | None = None,
     channel_assignment_mode: str | None = None,
     sort_order: int | None = None,
     total_stream_count: int | None = None,
-    parent_group_id: int | None = None,
     m3u_group_id: int | None = None,
     m3u_group_name: str | None = None,
     m3u_account_id: int | None = None,
@@ -556,7 +549,6 @@ def update_group(
     clear_display_name: bool = False,
     clear_channel_start_number: bool = False,
     clear_stream_timezone: bool = False,
-    clear_parent_group_id: bool = False,
     clear_m3u_group_id: bool = False,
     clear_m3u_group_name: bool = False,
     clear_m3u_account_id: bool = False,
@@ -625,10 +617,6 @@ def update_group(
     elif clear_soccer_followed_teams:
         updates.append("soccer_followed_teams = NULL")
 
-    if group_mode is not None:
-        updates.append("group_mode = ?")
-        values.append(group_mode)
-
     if channel_start_number is not None:
         updates.append("channel_start_number = ?")
         values.append(channel_start_number)
@@ -656,46 +644,6 @@ def update_group(
     if total_stream_count is not None:
         updates.append("total_stream_count = ?")
         values.append(total_stream_count)
-
-    if parent_group_id is not None:
-        updates.append("parent_group_id = ?")
-        values.append(parent_group_id)
-    elif clear_parent_group_id:
-        # When detaching from parent, copy inherited settings if child has none
-        current = conn.execute(
-            """SELECT parent_group_id, channel_start_number,
-                      channel_assignment_mode
-               FROM event_epg_groups WHERE id = ?""",
-            (group_id,),
-        ).fetchone()
-
-        if current and current["parent_group_id"]:
-            # Get parent's settings to copy
-            parent = conn.execute(
-                """SELECT channel_start_number,
-                          channel_assignment_mode
-                   FROM event_epg_groups WHERE id = ?""",
-                (current["parent_group_id"],),
-            ).fetchone()
-
-            if parent:
-                # Copy channel settings if child doesn't have them
-                if current["channel_start_number"] is None and parent["channel_start_number"]:
-                    updates.append("channel_start_number = ?")
-                    values.append(parent["channel_start_number"])
-
-                # Copy channel assignment mode
-                if parent["channel_assignment_mode"]:
-                    updates.append("channel_assignment_mode = ?")
-                    values.append(parent["channel_assignment_mode"])
-
-                logger.info(
-                    "[DETACH] Group %d: copied settings from parent %d",
-                    group_id,
-                    current["parent_group_id"],
-                )
-
-        updates.append("parent_group_id = NULL")
 
     if m3u_group_id is not None:
         updates.append("m3u_group_id = ?")

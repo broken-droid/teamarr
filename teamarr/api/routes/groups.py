@@ -57,8 +57,6 @@ class GroupCreate(BaseModel):
     leagues: list[str] = Field(default_factory=list)
     soccer_mode: str | None = None
     soccer_followed_teams: list[SoccerFollowedTeam] | None = None
-    group_mode: str = "multi"
-    parent_group_id: int | None = None
     channel_start_number: int | None = Field(None, ge=1)
     stream_timezone: str | None = None  # Timezone for stream datetime parsing
     duplicate_event_handling: str = "consolidate"
@@ -109,8 +107,6 @@ class GroupUpdate(BaseModel):
     leagues: list[str] | None = None
     soccer_mode: str | None = None  # 'all', 'teams', 'manual', or None (non-soccer)
     soccer_followed_teams: list[SoccerFollowedTeam] | None = None  # Teams to follow
-    group_mode: str | None = None  # "single" or "multi" - persisted to preserve user intent
-    parent_group_id: int | None = None
     channel_start_number: int | None = None
     stream_timezone: str | None = None  # Timezone for stream datetime parsing
     duplicate_event_handling: str | None = None
@@ -154,7 +150,6 @@ class GroupUpdate(BaseModel):
 
     # Clear flags for nullable fields
     clear_display_name: bool = False
-    clear_parent_group_id: bool = False
     clear_channel_start_number: bool = False
     clear_stream_timezone: bool = False
     clear_m3u_group_id: bool = False
@@ -188,8 +183,6 @@ class GroupResponse(BaseModel):
     leagues: list[str] = Field(default_factory=list)
     soccer_mode: str | None = None
     soccer_followed_teams: list[SoccerFollowedTeam] | None = None
-    group_mode: str = "multi"
-    parent_group_id: int | None = None
     channel_start_number: int | None = None
     stream_timezone: str | None = None  # Timezone for stream datetime parsing
     duplicate_event_handling: str = "consolidate"
@@ -298,7 +291,6 @@ class BulkGroupSettings(BaseModel):
     """Shared settings for bulk group creation."""
 
     # Deprecated: accepted for backward compat but ignored
-    group_mode: str = "multi"
     leagues: list[str] = Field(default_factory=list)
     soccer_mode: str | None = None
     soccer_followed_teams: list[SoccerFollowedTeam] | None = None
@@ -508,8 +500,6 @@ def list_groups(
                 soccer_followed_teams=[SoccerFollowedTeam(**t) for t in g.soccer_followed_teams]
                 if g.soccer_followed_teams
                 else None,
-                group_mode=g.group_mode,
-                parent_group_id=g.parent_group_id,
                 channel_start_number=g.channel_start_number,
                 duplicate_event_handling=g.duplicate_event_handling,
                 channel_assignment_mode=g.channel_assignment_mode,
@@ -607,8 +597,6 @@ def create_group(request: GroupCreate):
             soccer_followed_teams=[t.model_dump() for t in request.soccer_followed_teams]
             if request.soccer_followed_teams
             else None,
-            group_mode="multi",  # Hardcoded — hierarchy removed in v58
-            parent_group_id=None,  # Hardcoded — hierarchy removed in v58
             channel_start_number=None,  # Deprecated — global mode in v59
             stream_timezone=request.stream_timezone,
             duplicate_event_handling="consolidate",  # Deprecated — global mode in v59
@@ -668,8 +656,6 @@ def create_group(request: GroupCreate):
         soccer_followed_teams=[SoccerFollowedTeam(**t) for t in group.soccer_followed_teams]
         if group.soccer_followed_teams
         else None,
-        group_mode=group.group_mode,
-        parent_group_id=group.parent_group_id,
         channel_start_number=group.channel_start_number,
         stream_timezone=group.stream_timezone,
         duplicate_event_handling=group.duplicate_event_handling,
@@ -781,7 +767,6 @@ def create_groups_bulk(request: BulkGroupCreateRequest):
                         if request.settings.soccer_followed_teams
                         else None
                     ),
-                    group_mode="multi",  # Hardcoded — hierarchy removed in v58
                     stream_timezone=request.settings.stream_timezone,
                     duplicate_event_handling=request.settings.duplicate_event_handling,
                     channel_sort_order=request.settings.channel_sort_order,
@@ -989,8 +974,6 @@ def get_group_by_id(group_id: int):
         soccer_followed_teams=[SoccerFollowedTeam(**t) for t in group.soccer_followed_teams]
         if group.soccer_followed_teams
         else None,
-        group_mode=group.group_mode,
-        parent_group_id=group.parent_group_id,
         channel_start_number=group.channel_start_number,
         stream_timezone=group.stream_timezone,
         duplicate_event_handling=group.duplicate_event_handling,
@@ -1104,8 +1087,6 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
                 soccer_followed_teams=[t.model_dump() for t in request.soccer_followed_teams]
                 if request.soccer_followed_teams
                 else None,
-                group_mode="multi",  # Hardcoded — hierarchy removed in v58
-                parent_group_id=None,  # Hardcoded — hierarchy removed in v58
                 channel_start_number=request.channel_start_number,
                 stream_timezone=request.stream_timezone,
                 duplicate_event_handling=None,  # Deprecated — global consolidation in v59
@@ -1144,7 +1125,6 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
                 overlap_handling=None,  # Deprecated — global consolidation in v59
                 enabled=request.enabled,
                 clear_display_name=request.clear_display_name,
-                clear_parent_group_id=request.clear_parent_group_id,
                 clear_channel_start_number=request.clear_channel_start_number,
                 clear_stream_timezone=request.clear_stream_timezone,
                 clear_m3u_group_id=request.clear_m3u_group_id,
@@ -1200,8 +1180,6 @@ def update_group_by_id(group_id: int, request: GroupUpdate):
         soccer_followed_teams=[SoccerFollowedTeam(**t) for t in group.soccer_followed_teams]
         if group.soccer_followed_teams
         else None,
-        group_mode=group.group_mode,
-        parent_group_id=group.parent_group_id,
         channel_start_number=group.channel_start_number,
         stream_timezone=group.stream_timezone,
         duplicate_event_handling=group.duplicate_event_handling,
