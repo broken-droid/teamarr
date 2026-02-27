@@ -118,13 +118,11 @@ class ChannelService:
     def reconcile(
         self,
         auto_fix: bool = False,
-        group_ids: list[int] | None = None,
     ) -> ReconciliationResult:
-        """Run channel reconciliation.
+        """Run channel reconciliation across all channels.
 
         Args:
             auto_fix: Whether to automatically fix issues
-            group_ids: Optional list of group IDs to check
 
         Returns:
             ReconciliationResult with issues found and fixed
@@ -132,7 +130,7 @@ class ChannelService:
         from teamarr.consumers.reconciliation import create_reconciler
 
         reconciler = create_reconciler(self._db_factory, self._client)
-        result = reconciler.reconcile(auto_fix=auto_fix, group_ids=group_ids)
+        result = reconciler.reconcile(auto_fix=auto_fix)
 
         # Convert consumer types to service types
         issues = [

@@ -111,20 +111,15 @@ export async function syncLifecycle(): Promise<SyncResponse> {
   return api.post("/channels/sync", {})
 }
 
-export async function getReconciliationStatus(
-  groupIds?: number[]
-): Promise<ReconciliationResponse> {
-  const params = groupIds?.length ? `?group_ids=${groupIds.join(",")}` : ""
-  return api.get(`/channels/reconciliation/status${params}`)
+export async function getReconciliationStatus(): Promise<ReconciliationResponse> {
+  return api.get("/channels/reconciliation/status")
 }
 
 export async function runReconciliation(
   autoFix: boolean,
-  groupIds?: number[]
 ): Promise<ReconciliationResponse> {
   return api.post("/channels/reconciliation/fix", {
     auto_fix: autoFix,
-    group_ids: groupIds,
   })
 }
 

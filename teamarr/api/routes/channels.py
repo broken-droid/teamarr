@@ -82,7 +82,6 @@ class ReconciliationRequest(BaseModel):
     """Request for reconciliation."""
 
     auto_fix: bool = Field(default=False, description="Automatically fix issues")
-    group_ids: list[int] | None = Field(default=None, description="Limit to specific groups")
 
 
 class ReconciliationIssueModel(BaseModel):
@@ -333,12 +332,10 @@ def sync_lifecycle():
 
 
 @router.get("/reconciliation/status", response_model=ReconciliationResponse)
-def get_reconciliation_status(
-    group_ids: str | None = Query(None, description="Comma-separated group IDs"),
-):
+def get_reconciliation_status():
     """Get reconciliation status (detect only).
 
-    Checks for issues without making any changes.
+    Checks all channels for issues without making any changes.
     """
     from teamarr.database.settings import get_dispatcharr_settings
     from teamarr.dispatcharr import get_dispatcharr_client
@@ -353,17 +350,6 @@ def get_reconciliation_status(
             detail="Dispatcharr not configured",
         )
 
-    # Parse group IDs
-    parsed_group_ids = None
-    if group_ids:
-        try:
-            parsed_group_ids = [int(x.strip()) for x in group_ids.split(",") if x.strip()]
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="group_ids must be comma-separated integers",
-            ) from None
-
     # Get Dispatcharr client
     try:
         client = get_dispatcharr_client(get_db)
@@ -374,7 +360,7 @@ def get_reconciliation_status(
     channel_service = create_channel_service(get_db, sports_service, client)
 
     # Run detect-only
-    result = channel_service.reconcile(auto_fix=False, group_ids=parsed_group_ids)
+    result = channel_service.reconcile(auto_fix=False)
 
     return ReconciliationResponse(
         started_at=result.started_at.isoformat() if result.started_at else None,
@@ -439,10 +425,7 @@ def fix_reconciliation(request: ReconciliationRequest):
     channel_service = create_channel_service(get_db, sports_service, client)
 
     # Run reconciliation
-    result = channel_service.reconcile(
-        auto_fix=request.auto_fix,
-        group_ids=request.group_ids,
-    )
+    result = channel_service.reconcile(auto_fix=request.auto_fix)
 
     return ReconciliationResponse(
         started_at=result.started_at.isoformat() if result.started_at else None,

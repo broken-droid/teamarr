@@ -38,10 +38,10 @@ export function useSyncLifecycle() {
   })
 }
 
-export function useReconciliationStatus(groupIds?: number[]) {
+export function useReconciliationStatus() {
   return useQuery({
-    queryKey: ["reconciliationStatus", groupIds],
-    queryFn: () => getReconciliationStatus(groupIds),
+    queryKey: ["reconciliationStatus"],
+    queryFn: () => getReconciliationStatus(),
   })
 }
 
@@ -49,8 +49,7 @@ export function useRunReconciliation() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ autoFix, groupIds }: { autoFix: boolean; groupIds?: number[] }) =>
-      runReconciliation(autoFix, groupIds),
+    mutationFn: (autoFix: boolean) => runReconciliation(autoFix),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["managedChannels"] })
       queryClient.invalidateQueries({ queryKey: ["reconciliationStatus"] })

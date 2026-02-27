@@ -155,13 +155,14 @@ class ChannelReconciler:
     def reconcile(
         self,
         auto_fix: bool | None = None,
-        group_ids: list[int] | None = None,
     ) -> ReconciliationResult:
-        """Run full reconciliation check.
+        """Run full reconciliation check across all channels.
+
+        Channels are event-owned, not group-owned. Reconciliation always
+        checks all active channels.
 
         Args:
             auto_fix: Override auto-fix setting (None = use settings)
-            group_ids: Limit to specific groups (None = all)
 
         Returns:
             ReconciliationResult with all findings and actions taken
@@ -179,19 +180,19 @@ class ChannelReconciler:
         try:
             with self._db_factory() as conn:
                 # Step 1: Detect orphans (Teamarr records without Dispatcharr channels)
-                teamarr_orphans = self._detect_orphan_teamarr(conn, group_ids)
+                teamarr_orphans = self._detect_orphan_teamarr(conn)
                 result.issues_found.extend(teamarr_orphans)
 
                 # Step 2: Detect orphans (Dispatcharr channels without Teamarr records)
-                dispatcharr_orphans = self._detect_orphan_dispatcharr(conn, group_ids)
+                dispatcharr_orphans = self._detect_orphan_dispatcharr(conn)
                 result.issues_found.extend(dispatcharr_orphans)
 
                 # Step 3: Detect duplicates
-                duplicates = self._detect_duplicates(conn, group_ids)
+                duplicates = self._detect_duplicates(conn)
                 result.issues_found.extend(duplicates)
 
                 # Step 4: Detect drift (setting mismatches)
-                drift_issues = self._detect_drift(conn, group_ids)
+                drift_issues = self._detect_drift(conn)
                 result.issues_found.extend(drift_issues)
 
                 # Step 5: Apply fixes if auto_fix is enabled
@@ -214,7 +215,6 @@ class ChannelReconciler:
     def _detect_orphan_teamarr(
         self,
         conn: Connection,
-        group_ids: list[int] | None = None,
     ) -> list[ReconciliationIssue]:
         """Detect Teamarr records that have no corresponding Dispatcharr channel.
 
@@ -223,19 +223,11 @@ class ChannelReconciler:
         """
         from teamarr.database.channels import (
             get_all_managed_channels,
-            get_managed_channels_for_group,
             update_managed_channel,
         )
 
         issues = []
-
-        # Get managed channels
-        if group_ids:
-            channels = []
-            for gid in group_ids:
-                channels.extend(get_managed_channels_for_group(conn, gid))
-        else:
-            channels = get_all_managed_channels(conn, include_deleted=False)
+        channels = get_all_managed_channels(conn, include_deleted=False)
 
         for channel in channels:
             if not channel.dispatcharr_channel_id:
@@ -288,7 +280,6 @@ class ChannelReconciler:
     def _detect_orphan_dispatcharr(
         self,
         conn: Connection,
-        group_ids: list[int] | None = None,
     ) -> list[ReconciliationIssue]:
         """Detect Dispatcharr channels with teamarr-* tvg_id that aren't tracked.
 
@@ -354,11 +345,11 @@ class ChannelReconciler:
     def _detect_duplicates(
         self,
         conn: Connection,
-        group_ids: list[int] | None = None,
     ) -> list[ReconciliationIssue]:
-        """Detect multiple channels for the same event within a group.
+        """Detect multiple channels for the same event identity.
 
-        This can happen if:
+        Event identity: (event_id, event_provider, exception_keyword, primary_stream_id).
+        The unique index should prevent this, but can happen if:
         - consolidation mode changed from 'separate' to 'consolidate'
         - Bug in channel creation
         - Manual channel creation
@@ -374,27 +365,19 @@ class ChannelReconciler:
 
         issues = []
 
-        query = """
-            SELECT mc.event_id, mc.event_epg_group_id,
+        cursor = conn.execute("""
+            SELECT mc.event_id, mc.event_provider,
                    COUNT(*) as channel_count,
                    GROUP_CONCAT(mc.id) as channel_ids,
                    GROUP_CONCAT(mc.channel_name) as channel_names
             FROM managed_channels mc
             WHERE mc.deleted_at IS NULL
               AND mc.event_id IS NOT NULL
-        """
-        params: list = []
-        if group_ids:
-            placeholders = ",".join("?" * len(group_ids))
-            query += f" AND mc.event_epg_group_id IN ({placeholders})"
-            params.extend(group_ids)
-
-        query += """
-            GROUP BY mc.event_id, mc.event_epg_group_id
+            GROUP BY mc.event_id, mc.event_provider,
+                     COALESCE(mc.exception_keyword, ''),
+                     mc.primary_stream_id
             HAVING channel_count > 1
-        """
-
-        cursor = conn.execute(query, params)
+        """)
         duplicates = [dict(row) for row in cursor.fetchall()]
 
         for dup in duplicates:
@@ -404,7 +387,6 @@ class ChannelReconciler:
                     severity="warning",
                     event_id=dup["event_id"],
                     details={
-                        "group_id": dup.get("event_epg_group_id"),
                         "channel_count": dup["channel_count"],
                         "channel_ids": (
                             dup.get("channel_ids", "").split(",")
@@ -433,7 +415,6 @@ class ChannelReconciler:
     def _detect_drift(
         self,
         conn: Connection,
-        group_ids: list[int] | None = None,
     ) -> list[ReconciliationIssue]:
         """Detect channels where Teamarr's expected state differs from Dispatcharr.
 
@@ -446,18 +427,10 @@ class ChannelReconciler:
         from teamarr.database.channels import (
             get_all_managed_channels,
             get_channel_streams,
-            get_managed_channels_for_group,
         )
 
         issues = []
-
-        # Get managed channels with group config
-        if group_ids:
-            channels = []
-            for gid in group_ids:
-                channels.extend(get_managed_channels_for_group(conn, gid))
-        else:
-            channels = get_all_managed_channels(conn, include_deleted=False)
+        channels = get_all_managed_channels(conn, include_deleted=False)
 
         for channel in channels:
             if not channel.dispatcharr_channel_id:
