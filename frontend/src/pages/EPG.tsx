@@ -5,7 +5,6 @@ import {
   Play,
   Download,
   Loader2,
-  Clock,
   CheckCircle,
   XCircle,
   Ban,
@@ -38,6 +37,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
+import { RunHistoryTable } from "@/components/RunHistoryTable"
 import { useGenerationProgress } from "@/contexts/GenerationContext"
 import { useDateFormat } from "@/hooks/useDateFormat"
 import { VirtualizedTable } from "@/components/VirtualizedTable"
@@ -832,64 +832,11 @@ export function EPG() {
               No runs recorded yet. Generate EPG to see history.
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Generated At</TableHead>
-                  <TableHead>Events</TableHead>
-                  <TableHead>Matched</TableHead>
-                  <TableHead>Failed</TableHead>
-                  <TableHead>Channels</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead>Size</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {runsData?.runs.map((run) => (
-                  <TableRow key={run.id}>
-                    <TableCell>
-                      {run.status === "completed" ? (
-                        <CheckCircle className="h-4 w-4 text-green-600" />
-                      ) : run.status === "failed" ? (
-                        <XCircle className="h-4 w-4 text-red-600" />
-                      ) : run.status === "cancelled" ? (
-                        <Ban className="h-4 w-4 text-orange-500" />
-                      ) : run.status === "running" ? (
-                        <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-                      ) : (
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatDateTime(run.started_at)}
-                    </TableCell>
-                    <TableCell>{run.programmes?.events ?? 0}</TableCell>
-                    <TableCell>
-                      <button
-                        className="text-green-600 hover:underline font-medium"
-                        onClick={() => setMatchedModalRunId(run.id)}
-                      >
-                        {run.streams?.matched ?? 0}
-                      </button>
-                    </TableCell>
-                    <TableCell>
-                      <button
-                        className="text-red-600 hover:underline font-medium"
-                        onClick={() => setFailedModalRunId(run.id)}
-                      >
-                        {run.streams?.unmatched ?? 0}
-                      </button>
-                    </TableCell>
-                    <TableCell>{run.channels?.active ?? 0}</TableCell>
-                    <TableCell>{formatDuration(run.duration_ms)}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatBytes(run.xmltv_size_bytes)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <RunHistoryTable
+              runs={runsData?.runs ?? []}
+              onMatchedClick={(runId) => setMatchedModalRunId(runId)}
+              onFailedClick={(runId) => setFailedModalRunId(runId)}
+            />
           )}
         </CardContent>
       </Card>

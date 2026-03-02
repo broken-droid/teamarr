@@ -2,27 +2,16 @@ import { useQuery } from "@tanstack/react-query"
 import { useNavigate } from "react-router-dom"
 import { api } from "@/api/client"
 import { Button } from "@/components/ui/button"
+import { RunHistoryTable } from "@/components/RunHistoryTable"
 import { Quadrant, StatTile } from "@/components/ui/rich-tooltip"
 import { useGenerationProgress } from "@/contexts/GenerationContext"
-import { useDateFormat } from "@/hooks/useDateFormat"
+import { useRecentRuns } from "@/hooks/useEPG"
 import {
   Rocket,
   FileText,
   Plus,
   Download,
-  CheckCircle,
-  XCircle,
-  Loader2,
-  Clock,
 } from "lucide-react"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 
 // Types for dashboard stats
 interface LeagueBreakdown {
@@ -74,66 +63,9 @@ interface DashboardStats {
   }
 }
 
-interface EPGHistoryEntry {
-  id: number
-  run_type: string
-  started_at: string
-  completed_at: string | null
-  duration_ms: number | null
-  status: string
-  streams?: {
-    matched: number
-    unmatched: number
-    cached: number
-  }
-  channels?: {
-    created: number
-    updated: number
-    deleted: number
-    skipped: number
-    errors: number
-    active: number
-  }
-  programmes?: {
-    total: number
-    events: number
-    pregame: number
-    postgame: number
-    idle: number
-  }
-  xmltv_size_bytes?: number
-  extra_metrics?: {
-    teams_processed?: number
-    groups_processed?: number
-  }
-}
-
-// Helper functions for formatting
-function formatDuration(ms: number | null): string {
-  if (!ms) return "-"
-  const seconds = Math.round(ms / 1000)
-  if (seconds < 60) return `${seconds}s`
-  const mins = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`
-}
-
-function formatBytes(bytes: number | undefined | null): string {
-  if (bytes == null || isNaN(bytes) || bytes === 0) return "-"
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
 // Fetch dashboard stats
 async function fetchDashboardStats(): Promise<DashboardStats> {
   return api.get("/stats/dashboard")
-}
-
-// Fetch EPG history (recent runs) - only show full_epg aggregate runs
-async function fetchEPGHistory(): Promise<EPGHistoryEntry[]> {
-  const response = await api.get<{ runs: EPGHistoryEntry[]; count: number }>("/stats/runs?limit=10&run_type=full_epg")
-  return response.runs || []
 }
 
 // Fetch counts for entities
@@ -152,7 +84,6 @@ async function fetchCounts() {
 
 export function Dashboard() {
   const navigate = useNavigate()
-  const { formatDateTime } = useDateFormat()
 
   // Fetch dashboard stats
   const statsQuery = useQuery({
@@ -167,27 +98,22 @@ export function Dashboard() {
     queryFn: fetchCounts,
   })
 
-  // Fetch EPG history
-  const historyQuery = useQuery({
-    queryKey: ["epg-history"],
-    queryFn: fetchEPGHistory,
-    retry: false,
-  })
+  // Fetch EPG history (shared hook with EPG page)
+  const { data: runsData, refetch: refetchRuns } = useRecentRuns(10, "full_epg")
 
   // Generation progress (non-blocking toast)
   const { startGeneration, isGenerating } = useGenerationProgress()
 
   const handleGenerateEPG = () => {
     startGeneration(() => {
-      // Callback when generation completes
       statsQuery.refetch()
-      historyQuery.refetch()
+      refetchRuns()
     })
   }
 
   const stats = statsQuery.data
   const counts = countsQuery.data
-  const history = historyQuery.data
+  const runs = runsData?.runs ?? []
 
   // Check if we're in "getting started" mode
   const isGettingStarted =
@@ -384,52 +310,11 @@ export function Dashboard() {
       </div>
 
       {/* EPG Generation History */}
-      {history && history.length > 0 && (
+      {runs.length > 0 && (
         <div>
-          <h2 className="text-lg font-semibold mb-3">EPG Generation History <span className="text-sm font-normal text-muted-foreground">(last 30 days)</span></h2>
+          <h2 className="text-lg font-semibold mb-3">EPG Generation History</h2>
           <div className="border rounded-lg overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Generated At</TableHead>
-                  <TableHead>Teams</TableHead>
-                  <TableHead>Events</TableHead>
-                  <TableHead>Filler</TableHead>
-                  <TableHead>Managed Channels</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead>Size</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {history.map((entry) => (
-                  <TableRow key={entry.id}>
-                    <TableCell>
-                      {entry.status === "completed" ? (
-                        <CheckCircle className="h-4 w-4 text-green-600" />
-                      ) : entry.status === "failed" ? (
-                        <XCircle className="h-4 w-4 text-red-600" />
-                      ) : entry.status === "running" ? (
-                        <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-                      ) : (
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatDateTime(entry.started_at)}
-                    </TableCell>
-                    <TableCell>{entry.extra_metrics?.teams_processed ?? 0}</TableCell>
-                    <TableCell>{entry.programmes?.events ?? 0}</TableCell>
-                    <TableCell>{(entry.programmes?.pregame ?? 0) + (entry.programmes?.postgame ?? 0) + (entry.programmes?.idle ?? 0)}</TableCell>
-                    <TableCell>{entry.channels?.active ?? (entry.channels?.created ?? 0) + (entry.channels?.updated ?? 0)}</TableCell>
-                    <TableCell>{formatDuration(entry.duration_ms)}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatBytes(entry.xmltv_size_bytes)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <RunHistoryTable runs={runs} />
           </div>
         </div>
       )}
