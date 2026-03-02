@@ -27,6 +27,7 @@ class GenerationStatus:
     completed_at: datetime | None = None
     error: str | None = None
     result: dict[str, Any] = field(default_factory=dict)
+    cancellation_requested: bool = False
 
     def to_dict(self) -> dict:
         """Convert to JSON-serializable dict."""
@@ -43,6 +44,7 @@ class GenerationStatus:
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "error": self.error,
             "result": self.result,
+            "cancellation_requested": self.cancellation_requested,
         }
 
     def reset(self) -> None:
@@ -59,6 +61,7 @@ class GenerationStatus:
         self.completed_at = None
         self.error = None
         self.result = {}
+        self.cancellation_requested = False
 
 
 # Global status instance with thread-safe access
@@ -183,3 +186,30 @@ def create_progress_callback(
         )
 
     return callback
+
+
+def request_cancellation() -> bool:
+    """Request cancellation of the current generation.
+
+    Returns True if a generation was in progress and cancellation was requested.
+    """
+    with _status_lock:
+        if not _status.in_progress:
+            return False
+        _status.cancellation_requested = True
+        return True
+
+
+def is_cancellation_requested() -> bool:
+    """Check if cancellation has been requested. Thread-safe."""
+    with _status_lock:
+        return _status.cancellation_requested
+
+
+def cancel_generation() -> None:
+    """Mark generation as cancelled (terminal state)."""
+    with _status_lock:
+        _status.in_progress = False
+        _status.status = "cancelled"
+        _status.message = "Generation cancelled by user"
+        _status.completed_at = datetime.now()

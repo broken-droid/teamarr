@@ -14,6 +14,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+
+class GenerationCancelled(Exception):
+    """Raised when a generation run is cancelled by the user."""
+
+
 # Global lock to prevent concurrent EPG generation runs
 _generation_lock = threading.Lock()
 _generation_running = False
@@ -193,6 +198,14 @@ def run_full_generation(
             result.error = f"Failed to acquire lock: {e}"
             return result
 
+    # Import cancellation helpers
+    from teamarr.api.generation_status import cancel_generation, is_cancellation_requested
+
+    def check_cancelled():
+        """Check if cancellation was requested and raise if so."""
+        if is_cancellation_requested():
+            raise GenerationCancelled("Cancelled by user")
+
     try:
         # Increment generation counter ONCE at start of full EPG run
         # This ensures all groups in this run share the same generation
@@ -213,11 +226,13 @@ def run_full_generation(
             display_settings = get_display_settings(conn)
 
         # Step 1: Refresh M3U accounts (0-5%)
+        check_cancelled()
         update_progress("init", 3, "Refreshing M3U accounts...")
         if dispatcharr_client:
             result.m3u_refresh = _refresh_m3u_accounts(db_factory, dispatcharr_client)
 
         # Step 2: Process all teams (5-50%) - 45% budget
+        check_cancelled()
         update_progress("teams", 5, "Processing teams...")
 
         teams_start_time = time.time()
@@ -254,6 +269,7 @@ def run_full_generation(
         logger.info("[GENERATION] Transition message sent")
 
         # Step 3: Process all event groups (50-95%) - 45% budget
+        check_cancelled()
 
         groups_start_time = time.time()
 
@@ -306,18 +322,21 @@ def run_full_generation(
         result.programmes_total = result.teams_programmes + result.groups_programmes
 
         # Step 3b: Global channel reassignment (if enabled)
+        check_cancelled()
         _sync_global_channels(
             db_factory, dispatcharr_client, update_progress,
             external_occupied=external_occupied,
         )
 
         # Step 3b: Apply stream ordering rules to all channels (93-95%)
+        check_cancelled()
         update_progress("ordering", 93, "Applying stream ordering rules...")
         result.stream_ordering = _apply_stream_ordering(
             db_factory, dispatcharr_client, update_progress
         )
 
         # Step 4: Merge and save XMLTV (95-96%)
+        check_cancelled()
         update_progress("saving", 95, "Saving XMLTV...")
 
         xmltv_contents: list[str] = []
@@ -355,6 +374,7 @@ def run_full_generation(
         lifecycle_service.compute_external_occupied()
 
         # Step 5: Dispatcharr EPG refresh + channel association (96-98%)
+        check_cancelled()
         if dispatcharr_client and dispatcharr_settings.epg_id:
             update_progress("dispatcharr", 96, "Refreshing Dispatcharr EPG...")
             from teamarr.dispatcharr.factory import DispatcharrConnection
@@ -366,7 +386,11 @@ def run_full_generation(
             )
             epg_manager = EPGManager(raw_client)
             # Increased timeout from 60s to 120s for large EPGs
-            refresh_result = epg_manager.wait_for_refresh(dispatcharr_settings.epg_id, timeout=120)
+            refresh_result = epg_manager.wait_for_refresh(
+                dispatcharr_settings.epg_id,
+                timeout=120,
+                cancellation_check=is_cancellation_requested,
+            )
             result.epg_refresh = {
                 "success": refresh_result.success,
                 "message": refresh_result.message,
@@ -379,6 +403,7 @@ def run_full_generation(
             )
 
         # Step 6: Process scheduled deletions (98-99%)
+        check_cancelled()
         update_progress("lifecycle", 98, "Processing scheduled deletions...")
         channels_deleted_count = 0
         try:
@@ -395,6 +420,7 @@ def run_full_generation(
             result.deletions = {"error": str(e)}
 
         # Step 7: Run reconciliation + cleanup (99-100%)
+        check_cancelled()
         update_progress("reconciliation", 99, "Running reconciliation...")
         try:
             with db_factory() as conn:
@@ -416,6 +442,7 @@ def run_full_generation(
             logger.warning("[STREAM_AUDIT] Post-generation audit failed: %s", e)
 
         # Cleanup (history, old runs, unused logos — part of step 7)
+        check_cancelled()
         update_progress("cleanup", 99, "Cleaning up history...")
         cleanup_results = _run_cleanup_tasks(db_factory, dispatcharr_client, update_progress)
         result.cleanup = cleanup_results["history"]
@@ -439,6 +466,25 @@ def run_full_generation(
         flushed = flush_shared_cache()
         if flushed > 0:
             logger.debug("[CACHE] Flushed %d entries to SQLite", flushed)
+
+    except GenerationCancelled:
+        elapsed = round(time.time() - result.started_at, 1)
+        logger.info("[GENERATION] Cancelled by user after %.1fs", elapsed)
+        result.success = False
+        result.error = "Cancelled by user"
+        result.completed_at = time.time()
+        result.duration_seconds = elapsed
+        cancel_generation()
+
+        # Save cancelled run
+        try:
+            from teamarr.database.stats import save_run as _save_run
+
+            stats_run.complete(status="cancelled", error="Cancelled by user")
+            with db_factory() as conn:
+                _save_run(conn, stats_run)
+        except Exception as save_err:
+            logger.warning("[GENERATION] Failed to save cancelled run stats: %s", save_err)
 
     except Exception as e:
         logger.exception("[GENERATION] Failed: %s", e)

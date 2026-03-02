@@ -15,6 +15,7 @@ from teamarr.api.generation_status import (
     fail_generation,
     get_status,
     is_in_progress,
+    request_cancellation,
     start_generation,
     update_status,
 )
@@ -197,6 +198,25 @@ def get_generation_status():
     return get_status()
 
 
+@router.post("/epg/generate/cancel")
+def cancel_epg_generation():
+    """Cancel a running EPG generation.
+
+    Requests cancellation of the current generation run. The generation
+    will stop at the next checkpoint between phases.
+
+    Returns 200 if cancellation was requested, 409 if no generation is running.
+    """
+    if request_cancellation():
+        logger.info("[GENERATION] Cancellation requested by user")
+        return {"status": "cancelling", "message": "Cancellation requested"}
+
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="No generation in progress",
+    )
+
+
 @router.get("/epg/generate/stream")
 def generate_epg_stream():
     """Stream EPG generation progress using Server-Sent Events.
@@ -299,6 +319,9 @@ def generate_epg_stream():
                         "match_stats": match_stats,
                     }
                 )
+            elif result.error == "Cancelled by user":
+                # cancel_generation() already called in generation.py
+                pass
             else:
                 fail_generation(result.error or "Unknown error")
 

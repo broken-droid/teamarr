@@ -5,6 +5,7 @@ Handles EPG source operations including refresh and status polling.
 
 import logging
 import time
+from collections.abc import Callable
 
 from teamarr.dispatcharr.client import DispatcharrClient
 from teamarr.dispatcharr.types import DispatcharrEPGSource, RefreshResult
@@ -128,6 +129,7 @@ class EPGManager:
         epg_id: int,
         timeout: int = 60,
         poll_interval: int = 2,
+        cancellation_check: Callable[[], bool] | None = None,
     ) -> RefreshResult:
         """Trigger EPG refresh and wait for completion.
 
@@ -165,7 +167,23 @@ class EPGManager:
         while time.time() - start_time < timeout:
             time.sleep(poll_interval)
 
+            # Check for cancellation before making a potentially slow API call
+            if cancellation_check and cancellation_check():
+                duration = time.time() - start_time
+                return RefreshResult(
+                    success=False,
+                    message="Cancelled",
+                    duration=duration,
+                )
+
             current = self.get_source(epg_id)
+
+            # Check if elapsed time exceeded timeout after the API call
+            # (get_source can take up to 150s with retries, overshooting the timeout)
+            elapsed = time.time() - start_time
+            if elapsed >= timeout:
+                break
+
             if not current:
                 logger.debug("[EPG] Refresh poll: could not get source %d", epg_id)
                 continue

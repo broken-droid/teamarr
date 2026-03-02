@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 RunType = Literal["event_group", "team_epg", "batch", "reconciliation", "scheduler"]
-RunStatus = Literal["running", "completed", "failed", "partial"]
+RunStatus = Literal["running", "completed", "failed", "partial", "cancelled"]
 
 
 @dataclass

@@ -8,6 +8,7 @@ import {
   Clock,
   CheckCircle,
   XCircle,
+  Ban,
   Link,
   Copy,
   Check,
@@ -304,7 +305,7 @@ export function EPG() {
   }
 
   // Generation progress (non-blocking toast)
-  const { startGeneration, isGenerating } = useGenerationProgress()
+  const { startGeneration, cancelGeneration, isGenerating } = useGenerationProgress()
 
   const handleGenerate = () => {
     startGeneration(() => {
@@ -528,18 +529,27 @@ export function EPG() {
 
       {/* Action Bar */}
       <div className="flex flex-wrap items-center gap-3 bg-secondary border border-border rounded px-3 py-2">
-        <Button
-          size="sm"
-          onClick={handleGenerate}
-          disabled={isGenerating}
-        >
-          {isGenerating ? (
-            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-          ) : (
+        {isGenerating ? (
+          <>
+            <Button size="sm" disabled>
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              Generating...
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={cancelGeneration}
+            >
+              <Ban className="h-4 w-4 mr-1" />
+              Cancel
+            </Button>
+          </>
+        ) : (
+          <Button size="sm" onClick={handleGenerate}>
             <Play className="h-4 w-4 mr-1" />
-          )}
-          {isGenerating ? "Generating..." : "Generate"}
-        </Button>
+            Generate
+          </Button>
+        )}
         {stats?.last_run && (
           <span className="text-xs text-muted-foreground">
             Last: {formatRelativeTime(stats.last_run)}
@@ -843,6 +853,8 @@ export function EPG() {
                         <CheckCircle className="h-4 w-4 text-green-600" />
                       ) : run.status === "failed" ? (
                         <XCircle className="h-4 w-4 text-red-600" />
+                      ) : run.status === "cancelled" ? (
+                        <Ban className="h-4 w-4 text-orange-500" />
                       ) : run.status === "running" ? (
                         <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
                       ) : (

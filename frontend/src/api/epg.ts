@@ -395,3 +395,7 @@ export async function getGameDataCacheStats(): Promise<GameDataCacheStats> {
 export async function clearGameDataCache(): Promise<GameDataCacheClearResponse> {
   return api.post("/game-data-cache/clear", {})
 }
+
+export async function cancelGeneration(): Promise<{ status: string; message: string }> {
+  return api.post("/epg/generate/cancel", {})
+}

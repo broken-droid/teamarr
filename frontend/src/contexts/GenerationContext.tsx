@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react"
 import { toast } from "sonner"
+import { cancelGeneration as cancelGenerationAPI } from "@/api/epg"
 
 interface GenerationStatus {
   in_progress: boolean
@@ -21,10 +22,12 @@ interface GenerationStatus {
     duration_seconds?: number
     run_id?: number
   }
+  cancellation_requested?: boolean
 }
 
 interface GenerationContextValue {
   startGeneration: (onComplete?: (result: GenerationStatus["result"]) => void) => void
+  cancelGeneration: () => void
   isGenerating: boolean
 }
 
@@ -111,12 +114,18 @@ export function GenerationProvider({ children }: { children: ReactNode }) {
   const handleComplete = useCallback((data: GenerationStatus) => {
     setIsGenerating(false)
 
-    // Convert to success or error toast
+    // Convert to success, cancelled, or error toast
     if (data.status === "complete") {
       const result = data.result
       toast.success("EPG Generated", {
         id: TOAST_ID,
         description: `${result.programmes_count} programmes in ${result.duration_seconds}s`,
+        duration: 5000,
+      })
+    } else if (data.status === "cancelled") {
+      toast.warning("Generation Cancelled", {
+        id: TOAST_ID,
+        description: "EPG generation was cancelled by user",
         duration: 5000,
       })
     } else {
@@ -152,7 +161,7 @@ export function GenerationProvider({ children }: { children: ReactNode }) {
           console.log("[EPG] Poll result:", data.status, data.percent + "%", data.phase)
           updateToast(data)
 
-          if (data.status === "complete" || data.status === "error") {
+          if (data.status === "complete" || data.status === "error" || data.status === "cancelled") {
             console.log("[EPG] Generation finished:", data.status)
             if (pollIntervalRef.current) {
               clearInterval(pollIntervalRef.current)
@@ -194,6 +203,18 @@ export function GenerationProvider({ children }: { children: ReactNode }) {
     reconnectToGeneration()
   }, [isGenerating, updateToast, reconnectToGeneration])
 
+  const cancelGeneration = useCallback(() => {
+    if (!isGenerating) return
+    cancelGenerationAPI()
+      .then(() => {
+        toast.loading("Cancelling...", { id: TOAST_ID, duration: Infinity })
+      })
+      .catch((err) => {
+        console.error("Cancel request failed:", err)
+        toast.error("Failed to cancel generation", { duration: 3000 })
+      })
+  }, [isGenerating])
+
   // Check for in-progress generation on mount and periodically
   // This detects scheduled runs that start while the UI is open
   useEffect(() => {
@@ -225,7 +246,7 @@ export function GenerationProvider({ children }: { children: ReactNode }) {
   }, [isGenerating, reconnectToGeneration])
 
   return (
-    <GenerationContext.Provider value={{ startGeneration, isGenerating }}>
+    <GenerationContext.Provider value={{ startGeneration, cancelGeneration, isGenerating }}>
       {children}
     </GenerationContext.Provider>
   )
