@@ -11,7 +11,7 @@ import {
   X,
   Check,
   AlertCircle,
-
+  GripVertical,
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
@@ -49,7 +49,7 @@ import {
   useDeleteGroup,
   useToggleGroup,
   usePreviewGroup,
-
+  useReorderGroups,
 } from "@/hooks/useGroups"
 import type { EventGroup, PreviewGroupResponse, TeamFilterEntry } from "@/api/types"
 import { getLeagues } from "@/api/teams"
@@ -74,6 +74,10 @@ export function EventGroups() {
   const previewMutation = usePreviewGroup()
   const clearCacheMutation = useClearGroupMatchCache()
   const clearCachesBulkMutation = useClearGroupsMatchCache()
+  const reorderMutation = useReorderGroups()
+
+  // Drag-and-drop state
+  const [draggedGroupId, setDraggedGroupId] = useState<number | null>(null)
 
   // Preview modal state
   const [previewData, setPreviewData] = useState<PreviewGroupResponse | null>(null)
@@ -109,15 +113,23 @@ export function EventGroups() {
   const [sortColumn, setSortColumn] = useState<SortColumn>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc")
 
-  // Handle column sort
+  // Handle column sort (3-click cycle: asc → desc → reset to sort_order)
   const handleSort = (column: SortColumn) => {
     if (sortColumn === column) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc")
+      if (sortDirection === "asc") {
+        setSortDirection("desc")
+      } else {
+        // Third click: reset to default sort_order
+        setSortColumn(null)
+        setSortDirection("asc")
+      }
     } else {
       setSortColumn(column)
       setSortDirection("asc")
     }
   }
+
+  const isDndActive = sortColumn === null
 
   // Sort icon component
   const SortIcon = ({ column }: { column: SortColumn }) => {
@@ -141,9 +153,11 @@ export function EventGroups() {
     })
   }, [data?.groups, nameFilter, statusFilter])
 
-  // Apply column sorting when a column header is clicked
+  // Apply column sorting when a column header is clicked, default to sort_order
   const sortedGroups = useMemo(() => {
-    if (!sortColumn) return filteredGroups
+    if (!sortColumn) {
+      return [...filteredGroups].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    }
 
     const sortFn = (a: EventGroup, b: EventGroup) => {
       let cmp = 0
@@ -293,6 +307,51 @@ export function EventGroups() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to clear cache")
     }
+  }
+
+  // Drag-and-drop handlers (only active in default sort_order mode)
+  const handleDragStart = (e: React.DragEvent, groupId: number) => {
+    setDraggedGroupId(groupId)
+    e.dataTransfer.effectAllowed = "move"
+    e.dataTransfer.setData("text/plain", String(groupId))
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = "move"
+  }
+
+  const handleDrop = async (e: React.DragEvent, targetGroupId: number) => {
+    e.preventDefault()
+    setDraggedGroupId(null)
+
+    if (draggedGroupId === null || draggedGroupId === targetGroupId) return
+
+    // Build new order from current sortedGroups
+    const currentOrder = [...sortedGroups]
+    const dragIndex = currentOrder.findIndex(g => g.id === draggedGroupId)
+    const dropIndex = currentOrder.findIndex(g => g.id === targetGroupId)
+    if (dragIndex === -1 || dropIndex === -1) return
+
+    // Move dragged item to drop position
+    const [dragged] = currentOrder.splice(dragIndex, 1)
+    currentOrder.splice(dropIndex, 0, dragged)
+
+    // Assign sequential sort_order values and persist
+    const reorderPayload = currentOrder.map((g, i) => ({
+      group_id: g.id,
+      sort_order: i,
+    }))
+
+    try {
+      await reorderMutation.mutateAsync(reorderPayload)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to reorder groups")
+    }
+  }
+
+  const handleDragEnd = () => {
+    setDraggedGroupId(null)
   }
 
   // Selection handlers
@@ -657,6 +716,7 @@ export function EventGroups() {
             <Table className="table-fixed">
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-5 px-0"></TableHead>
                   <TableHead className="w-10">
                     <Checkbox
                       checked={selectedIds.size === sortedGroups.length && sortedGroups.length > 0}
@@ -687,10 +747,26 @@ export function EventGroups() {
                       Status <SortIcon column="status" />
                     </div>
                   </TableHead>
-                  <TableHead className="w-28 text-right">Actions</TableHead>
+                  <TableHead className="w-28 text-right">
+                    {sortColumn !== null ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 px-1.5 text-xs"
+                        onClick={() => { setSortColumn(null); setSortDirection("asc") }}
+                        title="Reset to priority order"
+                      >
+                        <RotateCcw className="h-3 w-3 mr-1" />
+                        Priority
+                      </Button>
+                    ) : (
+                      "Actions"
+                    )}
+                  </TableHead>
                 </TableRow>
                 {/* Filter row */}
                 <TableRow className="border-b-2 border-border">
+                  <TableHead className="py-0.5 pb-1.5 px-0"></TableHead>
                   <TableHead className="py-0.5 pb-1.5"></TableHead>
                   <TableHead className="py-0.5 pb-1.5">
                     <div className="relative">
@@ -735,7 +811,7 @@ export function EventGroups() {
               <TableBody>
                 {sortedGroups.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                       No groups match the current filters.
                     </TableCell>
                   </TableRow>
@@ -745,8 +821,22 @@ export function EventGroups() {
                   return (
                     <React.Fragment key={group.id}>
                       <TableRow
-                        className="border-l-3 border-l-transparent hover:border-l-emerald-500 group/row"
+                        className={`border-l-3 border-l-transparent hover:border-l-emerald-500 group/row ${
+                          draggedGroupId === group.id ? "opacity-50" : ""
+                        }`}
+                        draggable={isDndActive}
+                        onDragStart={(e) => isDndActive && handleDragStart(e, group.id)}
+                        onDragOver={(e) => isDndActive && handleDragOver(e)}
+                        onDrop={(e) => isDndActive && handleDrop(e, group.id)}
+                        onDragEnd={handleDragEnd}
                       >
+                        <TableCell className="px-0 w-5">
+                          <div className={`flex items-center justify-center ${
+                            isDndActive ? "cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground" : "opacity-0 pointer-events-none"
+                          }`}>
+                            <GripVertical className="h-4 w-4" />
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <Checkbox
                             checked={selectedIds.has(group.id)}

@@ -411,6 +411,27 @@ class BulkGroupUpdateResponse(BaseModel):
     total_failed: int
 
 
+class GroupOrderItem(BaseModel):
+    """A single group reorder entry."""
+
+    group_id: int
+    sort_order: int
+
+
+class ReorderGroupsRequest(BaseModel):
+    """Request to reorder groups."""
+
+    groups: list[GroupOrderItem]
+
+
+class ReorderGroupsResponse(BaseModel):
+    """Response from reorder groups."""
+
+    success: bool
+    updated_count: int
+    message: str
+
+
 # =============================================================================
 # VALIDATION
 # =============================================================================
@@ -917,6 +938,28 @@ def update_groups_bulk(request: BulkGroupUpdateRequest):
         total_requested=len(request.group_ids),
         total_updated=total_updated,
         total_failed=total_failed,
+    )
+
+
+@router.post("/reorder", response_model=ReorderGroupsResponse)
+def reorder_groups_endpoint(request: ReorderGroupsRequest):
+    """Reorder event groups by updating sort_order values."""
+    from teamarr.database.groups import reorder_groups
+
+    if not request.groups:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No groups provided for reordering",
+        )
+
+    conn = get_db()
+    items = [(g.sort_order, g.group_id) for g in request.groups]
+    updated = reorder_groups(conn, items)
+
+    return ReorderGroupsResponse(
+        success=True,
+        updated_count=updated,
+        message=f"Reordered {updated} groups",
     )
 
 

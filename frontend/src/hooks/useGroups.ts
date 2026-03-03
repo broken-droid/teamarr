@@ -10,6 +10,7 @@ import {
   getGroup,
   listGroups,
   previewGroup,
+  reorderGroups,
   updateGroup,
 } from "@/api/groups"
 import type { BulkGroupUpdateRequest, EventGroupCreate, EventGroupUpdate } from "@/api/types"
@@ -102,6 +103,18 @@ export function useClearGroupMatchCache() {
 export function useClearGroupsMatchCache() {
   return useMutation({
     mutationFn: (groupIds: number[]) => clearGroupsMatchCache(groupIds),
+  })
+}
+
+export function useReorderGroups() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (groups: { group_id: number; sort_order: number }[]) =>
+      reorderGroups(groups),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["groups"] })
+    },
   })
 }
 
