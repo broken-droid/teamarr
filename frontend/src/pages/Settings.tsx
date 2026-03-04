@@ -1729,36 +1729,78 @@ export function Settings() {
                   lifecycle && setLifecycle({ ...lifecycle, channel_create_timing: e.target.value })
                 }
               >
-                <option value="stream_available">When stream available</option>
-                <option value="same_day">Same day</option>
-                <option value="day_before">Day before</option>
-                <option value="2_days_before">2 days before</option>
-                <option value="3_days_before">3 days before</option>
-                <option value="1_week_before">1 week before</option>
+                <option value="same_day">Same day (midnight)</option>
+                <option value="before_event">Before event</option>
               </Select>
               <p className="text-xs text-muted-foreground">
-                When to create channels before events
+                {lifecycle?.channel_create_timing === "before_event"
+                  ? "Channel created before event start by the buffer below"
+                  : "Channel created at midnight (00:00) on event day"}
               </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="ch-delete-timing">Channel Delete Timing</Label>
               <Select
                 id="ch-delete-timing"
-                value={lifecycle?.channel_delete_timing ?? "day_after"}
+                value={lifecycle?.channel_delete_timing ?? "same_day"}
                 onChange={(e) =>
                   lifecycle && setLifecycle({ ...lifecycle, channel_delete_timing: e.target.value })
                 }
               >
-                <option value="stream_removed">When stream removed</option>
-                <option value="6_hours_after">6 hours after end of event</option>
-                <option value="same_day">Same day</option>
-                <option value="day_after">Day after</option>
-                <option value="2_days_after">2 days after</option>
-                <option value="3_days_after">3 days after</option>
-                <option value="1_week_after">1 week after</option>
+                <option value="same_day">Same day (end of day)</option>
+                <option value="after_event">After event</option>
               </Select>
               <p className="text-xs text-muted-foreground">
-                When to delete channels after events
+                {lifecycle?.channel_delete_timing === "after_event"
+                  ? "Channel deleted after event ends by the buffer below"
+                  : "Channel persists until end of day. Midnight-crossing events use the post buffer instead."}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            {lifecycle?.channel_create_timing === "before_event" && (
+              <div className="space-y-2">
+                <Label htmlFor="ch-pre-buffer">Pre-Event Buffer (minutes)</Label>
+                <Input
+                  id="ch-pre-buffer"
+                  type="number"
+                  min={0}
+                  max={20160}
+                  value={lifecycle?.channel_pre_buffer_minutes ?? 60}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value)
+                    if (!isNaN(val) && lifecycle) {
+                      setLifecycle({ ...lifecycle, channel_pre_buffer_minutes: Math.max(0, Math.min(20160, val)) })
+                    }
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Minutes before event start to create channel
+                  {(lifecycle?.channel_pre_buffer_minutes ?? 60) >= 60 &&
+                    ` (${((lifecycle?.channel_pre_buffer_minutes ?? 60) / 60).toFixed(1)}h)`}
+                </p>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="ch-post-buffer">Post-Event Buffer (minutes)</Label>
+              <Input
+                id="ch-post-buffer"
+                type="number"
+                min={0}
+                max={20160}
+                value={lifecycle?.channel_post_buffer_minutes ?? 60}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value)
+                  if (!isNaN(val) && lifecycle) {
+                    setLifecycle({ ...lifecycle, channel_post_buffer_minutes: Math.max(0, Math.min(20160, val)) })
+                  }
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Minutes after event ends to delete channel
+                {(lifecycle?.channel_post_buffer_minutes ?? 60) >= 60 &&
+                  ` (${((lifecycle?.channel_post_buffer_minutes ?? 60) / 60).toFixed(1)}h)`}
               </p>
             </div>
           </div>

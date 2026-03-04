@@ -152,10 +152,14 @@ CREATE TABLE IF NOT EXISTS settings (
     epg_lookback_hours INTEGER DEFAULT 6,           -- Check for in-progress games
 
     -- Channel Lifecycle (for event-based EPG)
-    -- Create timing: 'stream_available', 'same_day', 'day_before', '2_days_before', '3_days_before', '1_week_before'
-    channel_create_timing TEXT DEFAULT 'same_day' CHECK(channel_create_timing IN ('stream_available', 'same_day', 'day_before', '2_days_before', '3_days_before', '1_week_before')),
-    -- Delete timing: 'stream_removed', '6_hours_after', 'same_day', 'day_after', '2_days_after', '3_days_after', '1_week_after'
-    channel_delete_timing TEXT DEFAULT 'day_after' CHECK(channel_delete_timing IN ('stream_removed', '6_hours_after', 'same_day', 'day_after', '2_days_after', '3_days_after', '1_week_after')),
+    -- Create timing: 'same_day' (midnight of event day), 'before_event' (event_start - pre_buffer)
+    channel_create_timing TEXT DEFAULT 'same_day' CHECK(channel_create_timing IN ('same_day', 'before_event')),
+    -- Delete timing: 'same_day' (end of day, midnight-crossover aware), 'after_event' (event_end + post_buffer)
+    channel_delete_timing TEXT DEFAULT 'same_day' CHECK(channel_delete_timing IN ('same_day', 'after_event')),
+    -- Buffer minutes for before_event create timing (default 60 = 1 hour before event)
+    channel_pre_buffer_minutes INTEGER DEFAULT 60,
+    -- Buffer minutes for after_event delete timing and same_day midnight crossover (default 60)
+    channel_post_buffer_minutes INTEGER DEFAULT 60,
 
     -- Filler Settings
     midnight_crossover_mode TEXT DEFAULT 'postgame' CHECK(midnight_crossover_mode IN ('postgame', 'idle')),
@@ -337,7 +341,7 @@ CREATE TABLE IF NOT EXISTS settings (
         CHECK(global_consolidation_mode IN ('consolidate', 'separate')),
 
     -- Schema Version
-    schema_version INTEGER DEFAULT 61
+    schema_version INTEGER DEFAULT 65
 );
 
 -- Insert default settings
@@ -1619,3 +1623,10 @@ SELECT id, template_id, NULL, NULL
 FROM event_epg_groups
 WHERE template_id IS NOT NULL
   AND id NOT IN (SELECT DISTINCT group_id FROM group_templates);
+
+-- v65: Event-anchored channel lifecycle overhaul
+-- Consolidate 6 create timing modes → 2 (same_day, before_event)
+-- Consolidate 7 delete timing modes → 2 (same_day, after_event)
+-- Add configurable buffer minutes for event-anchored timing
+-- NOTE: Migration handled in Python (_run_migrations) because SQLite CHECK
+-- constraints are baked at table creation and require table recreation to update.

@@ -150,6 +150,8 @@ def update_lifecycle_settings(
     conn: Connection,
     channel_create_timing: str | None = None,
     channel_delete_timing: str | None = None,
+    channel_pre_buffer_minutes: int | None = None,
+    channel_post_buffer_minutes: int | None = None,
     channel_range_start: int | None = None,
     channel_range_end: int | None | object = _NOT_PROVIDED,
 ) -> bool:
@@ -157,8 +159,10 @@ def update_lifecycle_settings(
 
     Args:
         conn: Database connection
-        channel_create_timing: When to create channels
-        channel_delete_timing: When to delete channels
+        channel_create_timing: When to create channels ('same_day' or 'before_event')
+        channel_delete_timing: When to delete channels ('same_day' or 'after_event')
+        channel_pre_buffer_minutes: Minutes before event start for before_event mode
+        channel_post_buffer_minutes: Minutes after event end for after_event/midnight crossover
         channel_range_start: First auto-assigned channel number
         channel_range_end: Last auto-assigned channel number (None = no limit)
 
@@ -174,6 +178,12 @@ def update_lifecycle_settings(
     if channel_delete_timing is not None:
         updates.append("channel_delete_timing = ?")
         values.append(channel_delete_timing)
+    if channel_pre_buffer_minutes is not None:
+        updates.append("channel_pre_buffer_minutes = ?")
+        values.append(channel_pre_buffer_minutes)
+    if channel_post_buffer_minutes is not None:
+        updates.append("channel_post_buffer_minutes = ?")
+        values.append(channel_post_buffer_minutes)
     if channel_range_start is not None:
         updates.append("channel_range_start = ?")
         values.append(channel_range_start)

@@ -79,6 +79,8 @@ def get_settings():
         lifecycle=LifecycleSettingsModel(
             channel_create_timing=settings.lifecycle.channel_create_timing,
             channel_delete_timing=settings.lifecycle.channel_delete_timing,
+            channel_pre_buffer_minutes=settings.lifecycle.channel_pre_buffer_minutes,
+            channel_post_buffer_minutes=settings.lifecycle.channel_post_buffer_minutes,
             channel_range_start=settings.lifecycle.channel_range_start,
             channel_range_end=settings.lifecycle.channel_range_end,
         ),

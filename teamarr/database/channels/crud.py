@@ -204,10 +204,14 @@ def get_managed_channels_for_group(
     group_id: int,
     include_deleted: bool = False,
 ) -> list[ManagedChannel]:
-    """Get managed channels whose first stream came from a specific source group.
+    """Get managed channels related to a specific source group.
 
-    Filters by event_epg_group_id (stream provenance). This is a secondary
-    access pattern — the primary query should be by sport/league or event.
+    Returns channels where either:
+    - The channel was created by this group (event_epg_group_id = group_id), OR
+    - The channel has active streams sourced from this group (source_group_id = group_id)
+
+    This allows each group to validate its own streams even on channels
+    created by other groups (e.g., consolidated channels with cross-group streams).
 
     Args:
         conn: Database connection
@@ -215,20 +219,18 @@ def get_managed_channels_for_group(
         include_deleted: Whether to include deleted channels
 
     Returns:
-        List of ManagedChannel objects
+        List of ManagedChannel objects (deduplicated)
     """
-    if include_deleted:
-        cursor = conn.execute(
-            "SELECT * FROM managed_channels WHERE event_epg_group_id = ? ORDER BY channel_number",
-            (group_id,),
-        )
-    else:
-        cursor = conn.execute(
-            """SELECT * FROM managed_channels
-               WHERE event_epg_group_id = ? AND deleted_at IS NULL
-               ORDER BY channel_number""",
-            (group_id,),
-        )
+    deleted_clause = "" if include_deleted else "AND mc.deleted_at IS NULL"
+    cursor = conn.execute(
+        f"""SELECT DISTINCT mc.* FROM managed_channels mc
+            LEFT JOIN managed_channel_streams mcs
+                ON mc.id = mcs.managed_channel_id AND mcs.removed_at IS NULL
+            WHERE (mc.event_epg_group_id = ? OR mcs.source_group_id = ?)
+            {deleted_clause}
+            ORDER BY mc.channel_number""",
+        (group_id, group_id),
+    )
     return [ManagedChannel.from_row(dict(row)) for row in cursor.fetchall()]
 
 

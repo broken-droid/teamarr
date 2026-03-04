@@ -88,7 +88,17 @@ def get_all_settings(conn: Connection) -> AllSettings:
         ),
         lifecycle=LifecycleSettings(
             channel_create_timing=row["channel_create_timing"] or "same_day",
-            channel_delete_timing=row["channel_delete_timing"] or "day_after",
+            channel_delete_timing=row["channel_delete_timing"] or "same_day",
+            channel_pre_buffer_minutes=(
+                row["channel_pre_buffer_minutes"]
+                if row["channel_pre_buffer_minutes"] is not None
+                else 60
+            ),
+            channel_post_buffer_minutes=(
+                row["channel_post_buffer_minutes"]
+                if row["channel_post_buffer_minutes"] is not None
+                else 60
+            ),
             channel_range_start=row["channel_range_start"] or 101,
             channel_range_end=row["channel_range_end"],
         ),
@@ -284,6 +294,7 @@ def get_lifecycle_settings(conn: Connection) -> LifecycleSettings:
     """
     cursor = conn.execute(
         """SELECT channel_create_timing, channel_delete_timing,
+                  channel_pre_buffer_minutes, channel_post_buffer_minutes,
                   channel_range_start, channel_range_end
            FROM settings WHERE id = 1"""
     )
@@ -294,7 +305,17 @@ def get_lifecycle_settings(conn: Connection) -> LifecycleSettings:
 
     return LifecycleSettings(
         channel_create_timing=row["channel_create_timing"] or "same_day",
-        channel_delete_timing=row["channel_delete_timing"] or "day_after",
+        channel_delete_timing=row["channel_delete_timing"] or "same_day",
+        channel_pre_buffer_minutes=(
+            row["channel_pre_buffer_minutes"]
+            if row["channel_pre_buffer_minutes"] is not None
+            else 60
+        ),
+        channel_post_buffer_minutes=(
+            row["channel_post_buffer_minutes"]
+            if row["channel_post_buffer_minutes"] is not None
+            else 60
+        ),
         channel_range_start=row["channel_range_start"] or 101,
         channel_range_end=row["channel_range_end"],
     )

@@ -23,6 +23,8 @@ export interface DispatcharrSettings {
 export interface LifecycleSettings {
   channel_create_timing: string
   channel_delete_timing: string
+  channel_pre_buffer_minutes: number
+  channel_post_buffer_minutes: number
   channel_range_start: number
   channel_range_end: number | null
 }

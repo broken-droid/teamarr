@@ -45,6 +45,7 @@ def get_lifecycle_settings(conn: Connection) -> dict:
     """
     cursor = conn.execute(
         """SELECT channel_create_timing, channel_delete_timing,
+                  channel_pre_buffer_minutes, channel_post_buffer_minutes,
                   default_duplicate_event_handling
            FROM settings WHERE id = 1"""
     )
@@ -53,13 +54,25 @@ def get_lifecycle_settings(conn: Connection) -> dict:
     if row:
         return {
             "create_timing": row["channel_create_timing"] or "same_day",
-            "delete_timing": row["channel_delete_timing"] or "day_after",
+            "delete_timing": row["channel_delete_timing"] or "same_day",
+            "pre_buffer_minutes": (
+                row["channel_pre_buffer_minutes"]
+                if row["channel_pre_buffer_minutes"] is not None
+                else 60
+            ),
+            "post_buffer_minutes": (
+                row["channel_post_buffer_minutes"]
+                if row["channel_post_buffer_minutes"] is not None
+                else 60
+            ),
             "duplicate_handling": row["default_duplicate_event_handling"] or "consolidate",
         }
 
     return {
         "create_timing": "same_day",
-        "delete_timing": "day_after",
+        "delete_timing": "same_day",
+        "pre_buffer_minutes": 60,
+        "post_buffer_minutes": 60,
         "duplicate_handling": "consolidate",
     }
 
@@ -177,6 +190,8 @@ def create_lifecycle_service(
         epg_manager=epg_manager,
         create_timing=lifecycle["create_timing"],
         delete_timing=lifecycle["delete_timing"],
+        pre_buffer_minutes=lifecycle["pre_buffer_minutes"],
+        post_buffer_minutes=lifecycle["post_buffer_minutes"],
         default_duration_hours=all_settings.durations.default,
         sport_durations=sport_durations,
         include_final_events=all_settings.epg.include_final_events,

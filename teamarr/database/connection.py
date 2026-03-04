@@ -132,6 +132,10 @@ def init_db(db_path: Path | str | None = None) -> None:
             # (schema.sql INSERT OR IGNORE references label and match_terms columns)
             _migrate_exception_keywords_columns(conn)
 
+            # Pre-migration: recreate settings table for v62 lifecycle timing overhaul
+            # (SQLite CHECK constraints require table recreation to update)
+            _migrate_settings_for_v65(conn)
+
             # Apply schema (creates tables if missing, INSERT OR REPLACE updates seed data)
             conn.executescript(schema_sql)
             # Run remaining migrations for existing databases
@@ -417,6 +421,49 @@ def _migrate_exception_keywords_columns(conn: sqlite3.Connection) -> None:
     """)
 
     logger.info("[PRE-MIGRATE] Migrated %d exception keywords", len(existing_rows))
+
+
+def _migrate_settings_for_v65(conn: sqlite3.Connection) -> None:
+    """Pre-migration: Recreate settings table for v65 lifecycle timing overhaul.
+
+    SQLite CHECK constraints are baked at table creation and can't be altered.
+    The v65 migration changes channel_create_timing CHECK from 6 options to 2,
+    and channel_delete_timing CHECK from 7 options to 2. This requires dropping
+    and recreating the table so executescript can recreate it with new constraints.
+
+    Data is backed up to _settings_v65_backup and restored in _run_migrations.
+    """
+    try:
+        row = conn.execute(
+            "SELECT schema_version FROM settings WHERE id = 1"
+        ).fetchone()
+        if not row or row[0] >= 65:
+            return
+    except Exception:
+        return  # Table doesn't exist yet (fresh install)
+
+    # Add new columns first so backup includes them
+    for col in ["channel_pre_buffer_minutes", "channel_post_buffer_minutes"]:
+        try:
+            conn.execute(
+                f"ALTER TABLE settings ADD COLUMN {col} INTEGER DEFAULT 60"
+            )
+        except Exception:
+            pass  # Already exists
+
+    # Backup all settings data (CREATE TABLE AS copies data, no constraints)
+    conn.execute("DROP TABLE IF EXISTS _settings_v65_backup")
+    conn.execute(
+        "CREATE TABLE _settings_v65_backup "
+        "AS SELECT * FROM settings"
+    )
+
+    # Drop settings table — executescript will recreate with new CHECK constraints
+    conn.execute("DROP TABLE settings")
+
+    logger.info(
+        "[PRE-MIGRATE] Settings table dropped for v65 lifecycle timing migration"
+    )
 
 
 def _seed_tsdb_cache_if_needed(conn: sqlite3.Connection) -> None:
@@ -1327,6 +1374,103 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             "(event-scoped unique index)"
         )
         current_version = 64
+
+    # v65: Event-anchored channel lifecycle timing overhaul
+    # Restore settings from pre-migration backup with mapped timing values.
+    # Check for backup table existence (not schema_version) because the
+    # pre-migration drops the settings table, executescript recreates it with
+    # DEFAULT schema_version=65, making version-based checks unreliable.
+    has_v65_backup = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master "
+        "WHERE type='table' AND name='_settings_v65_backup'"
+    ).fetchone()[0]
+    if has_v65_backup:
+        try:
+            # Map old timing values to new values in the backup table
+            # (backup has no CHECK constraints, so these UPDATEs work)
+            conn.execute("""
+                UPDATE _settings_v65_backup SET
+                    channel_pre_buffer_minutes = CASE channel_create_timing
+                        WHEN 'stream_available' THEN 0
+                        WHEN 'day_before' THEN 1440
+                        WHEN '2_days_before' THEN 2880
+                        WHEN '3_days_before' THEN 4320
+                        WHEN '1_week_before' THEN 10080
+                        ELSE COALESCE(channel_pre_buffer_minutes, 60)
+                        END,
+                    channel_create_timing = CASE channel_create_timing
+                        WHEN 'stream_available' THEN 'before_event'
+                        WHEN 'day_before' THEN 'before_event'
+                        WHEN '2_days_before' THEN 'before_event'
+                        WHEN '3_days_before' THEN 'before_event'
+                        WHEN '1_week_before' THEN 'before_event'
+                        ELSE 'same_day' END,
+                    channel_post_buffer_minutes = CASE channel_delete_timing
+                        WHEN 'stream_removed' THEN 0
+                        WHEN '6_hours_after' THEN 360
+                        WHEN 'day_after' THEN 1440
+                        WHEN '2_days_after' THEN 2880
+                        WHEN '3_days_after' THEN 4320
+                        WHEN '1_week_after' THEN 10080
+                        ELSE COALESCE(channel_post_buffer_minutes, 60)
+                        END,
+                    channel_delete_timing = CASE channel_delete_timing
+                        WHEN 'stream_removed' THEN 'after_event'
+                        WHEN '6_hours_after' THEN 'after_event'
+                        WHEN 'day_after' THEN 'after_event'
+                        WHEN '2_days_after' THEN 'after_event'
+                        WHEN '3_days_after' THEN 'after_event'
+                        WHEN '1_week_after' THEN 'after_event'
+                        ELSE 'same_day' END
+            """)
+
+            # Restore: find columns common to both tables
+            backup_cols = [
+                r[1] for r in
+                conn.execute("PRAGMA table_info(_settings_v65_backup)")
+            ]
+            settings_cols = [
+                r[1] for r in
+                conn.execute("PRAGMA table_info(settings)")
+            ]
+            common = [c for c in settings_cols if c in backup_cols]
+            col_list = ", ".join(common)
+
+            # Delete the defaults row inserted by executescript
+            conn.execute("DELETE FROM settings WHERE id = 1")
+
+            # Restore mapped data
+            conn.execute(
+                f"INSERT INTO settings ({col_list}) "
+                f"SELECT {col_list} FROM _settings_v65_backup"
+            )
+
+            # Ensure schema_version is set correctly after restore
+            conn.execute(
+                "UPDATE settings SET schema_version = 65 WHERE id = 1"
+            )
+
+            # Cleanup
+            conn.execute("DROP TABLE _settings_v65_backup")
+            logger.info(
+                "[MIGRATE v65] Restored settings with mapped "
+                "lifecycle timing values"
+            )
+
+        except Exception as e:
+            logger.warning(
+                "[MIGRATE v65] Settings restore failed: %s", e
+            )
+            conn.execute("DROP TABLE IF EXISTS _settings_v65_backup")
+
+    # Always bump to v65 for databases below it (e.g. v64 with no timing changes)
+    if current_version < 65:
+        conn.execute("UPDATE settings SET schema_version = 65 WHERE id = 1")
+        logger.info(
+            "[MIGRATE] Schema upgraded to version 65 "
+            "(event-anchored lifecycle timing)"
+        )
+        current_version = 65
 
 
 def _dedup_cross_group_channels(conn: sqlite3.Connection) -> None:

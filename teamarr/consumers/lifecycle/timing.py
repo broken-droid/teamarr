@@ -3,16 +3,13 @@
 Handles when to create and delete event channels based on timing rules.
 
 Create timing options:
-- stream_available: Create immediately when stream exists
-- same_day: Create on the day of the event
-- day_before: Create 1 day before event
-- 2_days_before, 3_days_before, 1_week_before
+- same_day: Create at midnight (00:00) of event day
+- before_event: Create event_start - pre_buffer_minutes
 
 Delete timing options:
-- stream_removed: Delete only when stream disappears
-- same_day: Delete at 23:59 of event END date
-- day_after: Delete at 23:59 of day after event ends
-- 2_days_after, 3_days_after, 1_week_after
+- same_day: Delete at 23:59 of event end date. If event crosses midnight,
+  uses event_end + post_buffer_minutes instead to avoid 23hr stale window.
+- after_event: Delete at event_end + post_buffer_minutes
 """
 
 import logging
@@ -36,7 +33,9 @@ class ChannelLifecycleManager:
     Usage:
         manager = ChannelLifecycleManager(
             create_timing='same_day',
-            delete_timing='day_after',
+            delete_timing='after_event',
+            pre_buffer_minutes=60,
+            post_buffer_minutes=60,
             default_duration_hours=3.0,
             sport_durations={'basketball': 3.0, 'football': 3.5},
             include_final_events=False,
@@ -56,13 +55,17 @@ class ChannelLifecycleManager:
     def __init__(
         self,
         create_timing: CreateTiming = "same_day",
-        delete_timing: DeleteTiming = "day_after",
+        delete_timing: DeleteTiming = "same_day",
+        pre_buffer_minutes: int = 60,
+        post_buffer_minutes: int = 60,
         default_duration_hours: float = 3.0,
         sport_durations: dict[str, float] | None = None,
         include_final_events: bool = False,
     ):
         self.create_timing = create_timing
         self.delete_timing = delete_timing
+        self.pre_buffer_minutes = pre_buffer_minutes
+        self.post_buffer_minutes = post_buffer_minutes
         self.default_duration_hours = default_duration_hours
         self.sport_durations = sport_durations or {}
         self.include_final_events = include_final_events
@@ -81,13 +84,6 @@ class ChannelLifecycleManager:
         Returns:
             LifecycleDecision with should_act and reason
         """
-        if self.create_timing == "stream_available":
-            if stream_exists:
-                logger.debug("[CREATED] event=%s: stream available", event.id)
-                return LifecycleDecision(True, "Stream available")
-            logger.debug("[SKIP CREATE] event=%s: waiting for stream", event.id)
-            return LifecycleDecision(False, "Waiting for stream")
-
         # Calculate create threshold
         create_threshold = self._calculate_create_threshold(event)
         now = now_user()
@@ -143,13 +139,6 @@ class ChannelLifecycleManager:
         Returns:
             LifecycleDecision with should_act and reason
         """
-        if self.delete_timing == "stream_removed":
-            if not stream_exists:
-                logger.debug("[DELETED] event=%s: stream removed", event.id)
-                return LifecycleDecision(True, "Stream removed")
-            logger.debug("[SKIP DELETE] event=%s: stream still exists", event.id)
-            return LifecycleDecision(False, "Stream still exists")
-
         # Calculate delete threshold
         delete_threshold = self._calculate_delete_threshold(event)
         if not delete_threshold:
@@ -182,26 +171,27 @@ class ChannelLifecycleManager:
         )
 
     def _calculate_create_threshold(self, event: Event) -> datetime:
-        """Calculate when channel should be created."""
+        """Calculate when channel should be created.
+
+        - same_day: Midnight (00:00) of event day
+        - before_event: event_start - pre_buffer_minutes
+        """
         event_start = to_user_tz(event.start_time)
 
-        # Start of event day (midnight)
-        day_start = event_start.replace(hour=0, minute=0, second=0, microsecond=0)
+        if self.create_timing == "before_event":
+            return event_start - timedelta(minutes=self.pre_buffer_minutes)
 
-        timing_map = {
-            "same_day": day_start,
-            "day_before": day_start - timedelta(days=1),
-            "2_days_before": day_start - timedelta(days=2),
-            "3_days_before": day_start - timedelta(days=3),
-            "1_week_before": day_start - timedelta(days=7),
-        }
-
-        return timing_map.get(self.create_timing, day_start)
+        # same_day: start of event day (midnight)
+        return event_start.replace(hour=0, minute=0, second=0, microsecond=0)
 
     def _calculate_delete_threshold(self, event: Event) -> datetime | None:
         """Calculate when channel should be deleted.
 
-        Uses event END date for midnight-crossing games.
+        - after_event: event_end + post_buffer_minutes (always event-anchored)
+        - same_day: End of day (23:59) of event end date. If event crosses
+          midnight, uses event_end + post_buffer_minutes instead to avoid
+          the ~23hr stale window problem.
+
         Uses sport-specific duration when available.
         """
         event_start = to_user_tz(event.start_time)
@@ -210,25 +200,19 @@ class ChannelLifecycleManager:
         )
         event_end = event_start + timedelta(hours=duration_hours)
 
-        # Use END date (important for midnight-crossing games)
-        end_date = event_end.date()
+        if self.delete_timing == "after_event":
+            return event_end + timedelta(minutes=self.post_buffer_minutes)
 
-        # End of day (23:59:59)
-        day_end = datetime.combine(
-            end_date,
+        # same_day mode
+        if crosses_midnight(event_start, event_end):
+            # Midnight crossover fix: use event_end + buffer to avoid 23hr stale window
+            return event_end + timedelta(minutes=self.post_buffer_minutes)
+
+        # Normal: end of day 23:59:59
+        return datetime.combine(
+            event_end.date(),
             datetime.max.time(),
         ).replace(tzinfo=event_end.tzinfo)
-
-        timing_map = {
-            "6_hours_after": event_end + timedelta(hours=6),
-            "same_day": day_end,
-            "day_after": day_end + timedelta(days=1),
-            "2_days_after": day_end + timedelta(days=2),
-            "3_days_after": day_end + timedelta(days=3),
-            "1_week_after": day_end + timedelta(days=7),
-        }
-
-        return timing_map.get(self.delete_timing)
 
     def calculate_delete_time(self, event: Event) -> datetime | None:
         """Calculate scheduled delete time for an event."""
@@ -270,11 +254,7 @@ class ChannelLifecycleManager:
 
         # Calculate lifecycle window thresholds
         delete_threshold = self._calculate_delete_threshold(event)
-        create_threshold = (
-            self._calculate_create_threshold(event)
-            if self.create_timing != "stream_available"
-            else None
-        )
+        create_threshold = self._calculate_create_threshold(event)
 
         # Detailed logging for debugging lifecycle timing issues
         event_end = self.get_event_end_time(event)

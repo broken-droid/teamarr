@@ -14,22 +14,13 @@ from typing import Literal
 
 
 CreateTiming = Literal[
-    "stream_available",
     "same_day",
-    "day_before",
-    "2_days_before",
-    "3_days_before",
-    "1_week_before",
+    "before_event",
 ]
 
 DeleteTiming = Literal[
-    "stream_removed",
-    "6_hours_after",
     "same_day",
-    "day_after",
-    "2_days_after",
-    "3_days_after",
-    "1_week_after",
+    "after_event",
 ]
 
 DuplicateMode = Literal["consolidate", "separate", "ignore"]

@@ -222,6 +222,42 @@ def get_next_stream_priority(conn: Connection, managed_channel_id: int) -> int:
     return cursor.fetchone()[0]
 
 
+def update_stream_name(
+    conn: Connection,
+    managed_channel_id: int,
+    dispatcharr_stream_id: int,
+    new_name: str,
+) -> bool:
+    """Update the stored stream name for an active stream record.
+
+    Used when a stream's name changes but it's still matched to the same event
+    (e.g., provider renamed the stream). Keeps the stream record in sync.
+
+    Args:
+        conn: Database connection
+        managed_channel_id: Channel that owns the stream
+        dispatcharr_stream_id: Stream ID in Dispatcharr
+        new_name: New stream name to store
+
+    Returns:
+        True if updated, False if not found
+    """
+    cursor = conn.execute(
+        """UPDATE managed_channel_streams
+           SET stream_name = ?
+           WHERE managed_channel_id = ? AND dispatcharr_stream_id = ? AND removed_at IS NULL""",
+        (new_name, managed_channel_id, dispatcharr_stream_id),
+    )
+    if cursor.rowcount > 0:
+        logger.debug(
+            "Updated stream name for channel=%d stream=%d: %s",
+            managed_channel_id,
+            dispatcharr_stream_id,
+            new_name,
+        )
+    return cursor.rowcount > 0
+
+
 def update_stream_priority(
     conn: Connection,
     stream_db_id: int,

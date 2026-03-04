@@ -114,7 +114,9 @@ class ChannelLifecycleService:
         logo_manager: Any = None,
         epg_manager: Any = None,
         create_timing: CreateTiming = "same_day",
-        delete_timing: DeleteTiming = "day_after",
+        delete_timing: DeleteTiming = "same_day",
+        pre_buffer_minutes: int = 60,
+        post_buffer_minutes: int = 60,
         default_duration_hours: float = 3.0,
         sport_durations: dict[str, float] | None = None,
         timezone: str = "America/New_York",
@@ -128,8 +130,10 @@ class ChannelLifecycleService:
             channel_manager: ChannelManager instance for Dispatcharr operations
             logo_manager: LogoManager instance for logo operations
             epg_manager: EPGManager instance for EPG operations
-            create_timing: When to create channels
-            delete_timing: When to delete channels
+            create_timing: When to create channels ('same_day' or 'before_event')
+            delete_timing: When to delete channels ('same_day' or 'after_event')
+            pre_buffer_minutes: Minutes before event start for before_event mode
+            post_buffer_minutes: Minutes after event end for after_event/midnight crossover
             default_duration_hours: Default event duration
             sport_durations: Per-sport duration mapping (basketball, football, etc.)
             timezone: User timezone for timing calculations
@@ -152,6 +156,8 @@ class ChannelLifecycleService:
         self._timing_manager = ChannelLifecycleManager(
             create_timing=create_timing,
             delete_timing=delete_timing,
+            pre_buffer_minutes=pre_buffer_minutes,
+            post_buffer_minutes=post_buffer_minutes,
             default_duration_hours=default_duration_hours,
             sport_durations=sport_durations,
             include_final_events=include_final_events,
@@ -1962,8 +1968,8 @@ class ChannelLifecycleService:
     def _recalculate_deletion_times(self, conn) -> int:
         """Recalculate scheduled_delete_at for all active channels.
 
-        This handles settings changes (e.g., day_after -> 6_hours_after) by
-        recalculating deletion times based on current settings.
+        This handles settings changes by recalculating deletion times based
+        on current settings (same_day vs after_event with buffer minutes).
 
         Args:
             conn: Database connection
@@ -1977,13 +1983,15 @@ class ChannelLifecycleService:
 
         from teamarr.database.channels import get_all_managed_channels, update_managed_channel
         from teamarr.utilities.sports import get_sport_duration
+        from teamarr.utilities.time_blocks import crosses_midnight
         from teamarr.utilities.tz import to_user_tz
 
         channels = get_all_managed_channels(conn, include_deleted=False)
         updated_count = 0
 
-        # Get delete timing setting
+        # Get timing settings
         delete_timing = self._timing_manager.delete_timing
+        post_buffer_minutes = self._timing_manager.post_buffer_minutes
         sport_durations = self._timing_manager.sport_durations
         default_duration = self._timing_manager.default_duration_hours
 
@@ -2003,24 +2011,19 @@ class ChannelLifecycleService:
                 event_end = event_start + timedelta(hours=duration_hours)
 
                 # Calculate delete threshold based on timing setting
-                end_date = event_end.date()
-                day_end = datetime.combine(
-                    end_date,
-                    datetime.max.time(),
-                ).replace(tzinfo=event_end.tzinfo)
-
-                timing_map = {
-                    "6_hours_after": event_end + timedelta(hours=6),
-                    "same_day": day_end,
-                    "day_after": day_end + timedelta(days=1),
-                    "2_days_after": day_end + timedelta(days=2),
-                    "3_days_after": day_end + timedelta(days=3),
-                    "1_week_after": day_end + timedelta(days=7),
-                }
-
-                expected_delete_time = timing_map.get(delete_timing)
-                if not expected_delete_time:
-                    continue
+                if delete_timing == "after_event":
+                    expected_delete_time = event_end + timedelta(minutes=post_buffer_minutes)
+                else:
+                    # same_day mode
+                    if crosses_midnight(event_start, event_end):
+                        # Midnight crossover: use event_end + buffer
+                        expected_delete_time = event_end + timedelta(minutes=post_buffer_minutes)
+                    else:
+                        # Normal: end of day 23:59:59
+                        expected_delete_time = datetime.combine(
+                            event_end.date(),
+                            datetime.max.time(),
+                        ).replace(tzinfo=event_end.tzinfo)
 
                 expected_delete_str = expected_delete_time.isoformat()
                 stored_delete_str = (
@@ -2120,18 +2123,24 @@ class ChannelLifecycleService:
         self,
         group_id: int,
         current_streams: dict[int, dict],
+        matched_streams: list[dict] | None = None,
     ) -> StreamProcessResult:
-        """Clean up channels for streams that no longer exist or have changed content.
+        """Clean up channels for streams that no longer exist, changed content, or rotated events.
 
-        V1 Parity: Runs regardless of delete_timing because missing streams
-        should trigger immediate deletion.
+        Runs regardless of delete_timing because missing/rotated streams should
+        trigger immediate removal.
 
-        Also detects content changes via fingerprint comparison - if a stream's
-        name changed (indicating different content), it's removed from the channel.
+        When matched_streams is provided, performs event-aware validation:
+        - Streams matched to a different event than the channel → removed (content rotated)
+        - Streams with changed names but same event → name updated, kept
+        - Streams with changed names and no event match data → removed (suspicious)
+
+        When matched_streams is None, falls back to fingerprint-only behavior.
 
         Args:
             group_id: Event EPG group ID
             current_streams: Dict mapping stream_id -> stream_data with 'name' field
+            matched_streams: Optional list of matched stream dicts with event data
 
         Returns:
             StreamProcessResult with deleted channels and errors
@@ -2142,14 +2151,27 @@ class ChannelLifecycleService:
             get_managed_channels_for_group,
             log_channel_history,
             remove_stream_from_channel,
+            update_stream_name,
         )
 
         result = StreamProcessResult()
         current_ids_set = set(current_streams.keys())
 
+        # Build reverse index: stream_id → event_id (from current match results)
+        stream_event_map: dict[int, str] = {}
+        if matched_streams:
+            for ms in matched_streams:
+                stream_info = ms.get("stream", {})
+                sid = stream_info.get("id") if isinstance(stream_info, dict) else None
+                event = ms.get("event")
+                segment = ms.get("card_segment")
+                if sid and event:
+                    eid = f"{event.id}-{segment}" if segment else str(event.id)
+                    stream_event_map[sid] = eid
+
         try:
             with self._db_factory() as conn:
-                # Get all active channels for the group
+                # Get all active channels for the group (including cross-group streams)
                 channels = get_managed_channels_for_group(conn, group_id)
 
                 for channel in channels:
@@ -2176,7 +2198,12 @@ class ChannelLifecycleService:
                                 )
                         continue
 
-                    # Categorize streams: valid, missing, or content-changed
+                    # Determine channel's event identity for rotation detection
+                    channel_event_id = getattr(channel, "event_id", None)
+                    if channel_event_id:
+                        channel_event_id = str(channel_event_id)
+
+                    # Categorize streams: valid, missing, changed/rotated
                     valid_streams = []
                     missing_streams = []
                     changed_streams = []
@@ -2188,47 +2215,114 @@ class ChannelLifecycleService:
                         if not stream_id:
                             continue
 
-                        # Skip streams added by other event groups — they are
-                        # managed by those groups and are not in this group's
-                        # M3U pool, so they would be incorrectly flagged missing.
-                        if s.source_group_id is not None and s.source_group_id != group_id:
+                        # Cross-group stream: not in this group's M3U pool
+                        is_cross_group = (
+                            s.source_group_id is not None and s.source_group_id != group_id
+                        )
+
+                        if is_cross_group:
+                            # Cross-group stream: skip "missing from M3U" check
+                            # But still check event rotation if we have match data
+                            if stream_event_map and channel_event_id:
+                                matched_event = stream_event_map.get(stream_id)
+                                if matched_event and matched_event != channel_event_id:
+                                    changed_streams.append(
+                                        {
+                                            "stream": s,
+                                            "old_name": stored_name,
+                                            "new_name": f"rotated: {matched_event}",
+                                            "reason": "event_rotated",
+                                        }
+                                    )
+                                    continue
                             valid_streams.append(s)
                             continue
 
                         if stream_id not in current_ids_set:
                             # Stream no longer in M3U
                             missing_streams.append(s)
-                        else:
-                            # Stream exists - check if content changed via fingerprint
-                            current_stream = current_streams.get(stream_id, {})
-                            current_name = current_stream.get("name", "")
+                            continue
 
-                            if stored_name and current_name and stored_name != current_name:
-                                # Content changed - fingerprint would differ
-                                stored_fp = compute_fingerprint(group_id, stream_id, stored_name)
-                                current_fp = compute_fingerprint(group_id, stream_id, current_name)
+                        # Stream exists in M3U — check for event rotation or name change
+                        current_stream = current_streams.get(stream_id, {})
+                        current_name = current_stream.get("name", "")
 
-                                if stored_fp != current_fp:
-                                    changed_streams.append(
-                                        {
-                                            "stream": s,
-                                            "old_name": stored_name,
-                                            "new_name": current_name,
-                                        }
-                                    )
+                        # Event-aware validation (when match data available)
+                        if stream_event_map and channel_event_id:
+                            matched_event = stream_event_map.get(stream_id)
+                            if matched_event and matched_event != channel_event_id:
+                                # Stream now matches a different event → content rotated
+                                changed_streams.append(
+                                    {
+                                        "stream": s,
+                                        "old_name": stored_name,
+                                        "new_name": current_name,
+                                        "reason": "event_rotated",
+                                    }
+                                )
+                                logger.debug(
+                                    "[LIFECYCLE] Stream %d rotated: "
+                        "channel event=%s, now matched to=%s",
+                                    stream_id,
+                                    channel_event_id,
+                                    matched_event,
+                                )
+                                continue
+
+                        # Name change detection
+                        if stored_name and current_name and stored_name != current_name:
+                            # Name changed — check if it's still the same event
+                            if stream_event_map:
+                                matched_event = stream_event_map.get(stream_id)
+                                if matched_event and (
+                                    not channel_event_id or matched_event == channel_event_id
+                                ):
+                                    # Same event, just renamed — update stored name, keep
+                                    update_stream_name(conn, channel.id, stream_id, current_name)
+                                    valid_streams.append(s)
                                     continue
 
-                            valid_streams.append(s)
+                            # Fingerprint-based fallback (no match data or unmatched stream)
+                            stored_fp = compute_fingerprint(group_id, stream_id, stored_name)
+                            current_fp = compute_fingerprint(group_id, stream_id, current_name)
+
+                            if stored_fp != current_fp:
+                                changed_streams.append(
+                                    {
+                                        "stream": s,
+                                        "old_name": stored_name,
+                                        "new_name": current_name,
+                                        "reason": "content_changed",
+                                    }
+                                )
+                                continue
+
+                        valid_streams.append(s)
 
                     # Combine missing and changed streams for removal
                     streams_to_remove = missing_streams + [c["stream"] for c in changed_streams]
 
                     if not valid_streams and streams_to_remove:
                         # All streams gone or changed - delete channel
+                        reasons = []
+                        if missing_streams:
+                            reasons.append(f"{len(missing_streams)} missing")
+                        rotated = [
+                            c for c in changed_streams if c.get("reason") == "event_rotated"
+                        ]
+                        content = [
+                            c for c in changed_streams if c.get("reason") == "content_changed"
+                        ]
+                        if rotated:
+                            reasons.append(f"{len(rotated)} rotated")
+                        if content:
+                            reasons.append(f"{len(content)} content-changed")
+                        reason_str = ", ".join(reasons) or "all streams removed"
+
                         success = self.delete_managed_channel(
                             conn,
                             channel.id,
-                            reason="all streams removed or changed",
+                            reason=reason_str,
                         )
                         if success:
                             result.deleted.append(
@@ -2236,7 +2330,7 @@ class ChannelLifecycleService:
                                     "channel_id": channel.dispatcharr_channel_id,
                                     "channel_number": channel.channel_number,
                                     "channel_name": channel.channel_name,
-                                    "reason": "all streams no longer exist or content changed",
+                                    "reason": reason_str,
                                 }
                             )
                         else:
@@ -2268,22 +2362,29 @@ class ChannelLifecycleService:
                         for changed in changed_streams:
                             s = changed["stream"]
                             stream_id = getattr(s, "dispatcharr_stream_id", None)
+                            reason = changed.get("reason", "content_changed")
                             if stream_id:
                                 remove_stream_from_channel(conn, channel.id, stream_id)
                                 self._remove_stream_from_dispatcharr_channel(
                                     channel.dispatcharr_channel_id,
                                     stream_id,
                                 )
+                                if reason == "event_rotated":
+                                    notes = f"Stream {stream_id} rotated to different event"
+                                else:
+                                    notes = f"Stream {stream_id} content changed: '{changed['old_name']}' -> '{changed['new_name']}'"  # noqa: E501
                                 log_channel_history(
                                     conn=conn,
                                     managed_channel_id=channel.id,
                                     change_type="stream_removed",
                                     change_source="lifecycle",
-                                    notes=f"Stream {stream_id} content changed: '{changed['old_name']}' -> '{changed['new_name']}'",  # noqa: E501
+                                    notes=notes,
                                 )
                                 logger.debug(
-                                    f"Removed stream {stream_id} from channel "
-                                    f"'{channel.channel_name}': content changed"
+                                    "Removed stream %d from channel '%s': %s",
+                                    stream_id,
+                                    channel.channel_name,
+                                    reason,
                                 )
 
                         result.streams_removed.append(
@@ -2302,7 +2403,8 @@ class ChannelLifecycleService:
 
         if result.deleted:
             logger.info(
-                "[LIFECYCLE] Deleted %d channels with missing/changed streams", len(result.deleted)
+                "[LIFECYCLE] Deleted %d channels with missing/changed/rotated streams",
+                len(result.deleted),
             )
 
         return result

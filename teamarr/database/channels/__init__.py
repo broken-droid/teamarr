@@ -51,6 +51,7 @@ from .streams import (
     remove_stream_from_channel,
     reorder_channel_streams,
     stream_exists_on_channel,
+    update_stream_name,
     update_stream_priority,
 )
 from .types import ManagedChannel, ManagedChannelStream
@@ -81,6 +82,7 @@ __all__ = [
     "remove_stream_from_channel",
     "reorder_channel_streams",
     "stream_exists_on_channel",
+    "update_stream_name",
     "update_stream_priority",
     # History
     "log_channel_history",

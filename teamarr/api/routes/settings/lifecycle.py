@@ -30,6 +30,8 @@ def get_lifecycle_settings():
     return LifecycleSettingsModel(
         channel_create_timing=settings.channel_create_timing,
         channel_delete_timing=settings.channel_delete_timing,
+        channel_pre_buffer_minutes=settings.channel_pre_buffer_minutes,
+        channel_post_buffer_minutes=settings.channel_post_buffer_minutes,
         channel_range_start=settings.channel_range_start,
         channel_range_end=settings.channel_range_end,
     )
@@ -44,33 +46,30 @@ def update_lifecycle_settings(update: LifecycleSettingsModel):
     )
 
     # Validate timing values
-    valid_create = {
-        "stream_available",
-        "same_day",
-        "day_before",
-        "2_days_before",
-        "3_days_before",
-        "1_week_before",
-    }
-    valid_delete = {
-        "stream_removed",
-        "6_hours_after",
-        "same_day",
-        "day_after",
-        "2_days_after",
-        "3_days_after",
-        "1_week_after",
-    }
+    valid_create = {"same_day", "before_event"}
+    valid_delete = {"same_day", "after_event"}
 
     if update.channel_create_timing not in valid_create:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid channel_create_timing. Valid: {valid_create}",
+            detail=f"Invalid channel_create_timing. Valid: {sorted(valid_create)}",
         )
     if update.channel_delete_timing not in valid_delete:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid channel_delete_timing. Valid: {valid_delete}",
+            detail=f"Invalid channel_delete_timing. Valid: {sorted(valid_delete)}",
+        )
+
+    # Validate buffer ranges (0 to 20160 minutes = 2 weeks)
+    if not (0 <= update.channel_pre_buffer_minutes <= 20160):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="channel_pre_buffer_minutes must be between 0 and 20160",
+        )
+    if not (0 <= update.channel_post_buffer_minutes <= 20160):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="channel_post_buffer_minutes must be between 0 and 20160",
         )
 
     with get_db() as conn:
@@ -78,6 +77,8 @@ def update_lifecycle_settings(update: LifecycleSettingsModel):
             conn,
             channel_create_timing=update.channel_create_timing,
             channel_delete_timing=update.channel_delete_timing,
+            channel_pre_buffer_minutes=update.channel_pre_buffer_minutes,
+            channel_post_buffer_minutes=update.channel_post_buffer_minutes,
             channel_range_start=update.channel_range_start,
             channel_range_end=update.channel_range_end,
         )
@@ -88,6 +89,8 @@ def update_lifecycle_settings(update: LifecycleSettingsModel):
     return LifecycleSettingsModel(
         channel_create_timing=settings.channel_create_timing,
         channel_delete_timing=settings.channel_delete_timing,
+        channel_pre_buffer_minutes=settings.channel_pre_buffer_minutes,
+        channel_post_buffer_minutes=settings.channel_post_buffer_minutes,
         channel_range_start=settings.channel_range_start,
         channel_range_end=settings.channel_range_end,
     )
