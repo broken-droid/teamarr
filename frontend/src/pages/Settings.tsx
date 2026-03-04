@@ -1732,32 +1732,26 @@ export function Settings() {
                 <option value="same_day">Same day</option>
                 <option value="before_event">Before event</option>
               </Select>
+              <Label htmlFor="ch-pre-buffer" className={lifecycle?.channel_create_timing !== "before_event" ? "text-muted-foreground" : ""}>
+                Pre-Event Buffer (hours)
+              </Label>
+              <Input
+                id="ch-pre-buffer"
+                type="number"
+                min={0}
+                max={336}
+                disabled={lifecycle?.channel_create_timing !== "before_event"}
+                value={Math.round((lifecycle?.channel_pre_buffer_minutes ?? 60) / 60)}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value)
+                  if (!isNaN(val) && lifecycle) {
+                    setLifecycle({ ...lifecycle, channel_pre_buffer_minutes: Math.max(0, Math.min(336, val)) * 60 })
+                  }
+                }}
+              />
               <p className="text-xs text-muted-foreground">
-                {lifecycle?.channel_create_timing === "before_event"
-                  ? "Channel created before event start by the buffer below"
-                  : "Channel created at midnight (00:00) on event day"}
+                Hours before event start to create channel
               </p>
-              {lifecycle?.channel_create_timing === "before_event" && (
-                <>
-                  <Label htmlFor="ch-pre-buffer">Pre-Event Buffer (hours)</Label>
-                  <Input
-                    id="ch-pre-buffer"
-                    type="number"
-                    min={0}
-                    max={336}
-                    value={Math.round((lifecycle?.channel_pre_buffer_minutes ?? 60) / 60)}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value)
-                      if (!isNaN(val) && lifecycle) {
-                        setLifecycle({ ...lifecycle, channel_pre_buffer_minutes: Math.max(0, Math.min(336, val)) * 60 })
-                      }
-                    }}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Hours before event start to create channel
-                  </p>
-                </>
-              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="ch-delete-timing">Channel Delete Timing</Label>
