@@ -36,6 +36,19 @@ from teamarr.utilities.fuzzy_match import get_matcher, normalize_text
 
 logger = logging.getLogger(__name__)
 
+
+def _sport_hint_matches(sport_hint: str | list[str], event_sport: str) -> bool:
+    """Check if a sport hint matches an event's sport.
+
+    Handles both single hints ("Hockey") and multi-sport hints
+    (["Soccer", "Football"]) for ambiguous terms.
+    """
+    event_lower = event_sport.lower()
+    if isinstance(sport_hint, list):
+        return event_lower in [s.lower() for s in sport_hint]
+    return event_lower == sport_hint.lower()
+
+
 # Type alias for user-defined aliases: (alias_text, league) -> team_name
 UserAliasCache = dict[tuple[str, str], str]
 
@@ -490,7 +503,7 @@ class TeamMatcher:
             # Skip when league hint is present - league is more specific and avoids
             # sport naming inconsistencies (e.g., "Football" vs "soccer")
             if ctx.classified.sport_hint and not ctx.classified.league_hint:
-                if event.sport.lower() != ctx.classified.sport_hint.lower():
+                if not _sport_hint_matches(ctx.classified.sport_hint, event.sport):
                     continue
 
             # Try alias match first (100% confidence)
@@ -643,7 +656,7 @@ class TeamMatcher:
             # Skip when league hint is present - league is more specific and avoids
             # sport naming inconsistencies (e.g., "Football" vs "soccer")
             if ctx.classified.sport_hint and not ctx.classified.league_hint:
-                if event.sport.lower() != ctx.classified.sport_hint.lower():
+                if not _sport_hint_matches(ctx.classified.sport_hint, event.sport):
                     continue
 
             # Try alias match first (100% confidence)

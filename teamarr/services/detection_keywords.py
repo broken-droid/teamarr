@@ -59,6 +59,22 @@ def _load_user_keywords(category: str) -> list[dict]:
         return []
 
 
+def _parse_sport_target(value: str) -> str | list[str]:
+    """Parse sport hint target value.
+
+    Supports plain strings ("Hockey") and JSON arrays ('["Soccer", "Football"]')
+    for ambiguous terms that map to multiple sports.
+    """
+    if value.startswith("["):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list) and all(isinstance(s, str) for s in parsed):
+                return parsed if len(parsed) != 1 else parsed[0]
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return value
+
+
 class DetectionKeywordService:
     """Service for loading and caching detection patterns.
 
@@ -72,7 +88,7 @@ class DetectionKeywordService:
     # Class-level caches for compiled patterns
     _event_type_keywords: ClassVar[dict[str, list[str]] | None] = None
     _league_hints: ClassVar[list[tuple[Pattern[str], str | list[str]]] | None] = None
-    _sport_hints: ClassVar[list[tuple[Pattern[str], str]] | None] = None
+    _sport_hints: ClassVar[list[tuple[Pattern[str], str | list[str]]] | None] = None
     _placeholder_patterns: ClassVar[list[Pattern[str]] | None] = None
     _card_segment_patterns: ClassVar[list[tuple[Pattern[str], str]] | None] = None
     _exclusion_patterns: ClassVar[list[Pattern[str]] | None] = None
@@ -201,14 +217,18 @@ class DetectionKeywordService:
         return cls._league_hints
 
     @classmethod
-    def get_sport_hints(cls) -> list[tuple[Pattern[str], str]]:
+    def get_sport_hints(cls) -> list[tuple[Pattern[str], str | list[str]]]:
         """Get compiled sport hint patterns.
 
         Merges built-in patterns with user-defined patterns from database.
         User patterns with higher priority come first.
 
+        target_value can be a plain string ("Hockey") or a JSON array
+        ('["Soccer", "Football"]') for ambiguous terms that map to
+        multiple sports.
+
         Returns:
-            List of (compiled_pattern, sport_name) tuples.
+            List of (compiled_pattern, sport_or_sports) tuples.
         """
         if cls._sport_hints is None:
             cls._sport_hints = []
@@ -218,7 +238,7 @@ class DetectionKeywordService:
             user_keywords = _load_user_keywords("sport_hints")
             for kw in user_keywords:
                 pattern_str = kw["keyword"]
-                sport = kw["target_value"] or ""
+                sport = _parse_sport_target(kw["target_value"] or "")
                 try:
                     if kw["is_regex"]:
                         compiled = re.compile(pattern_str, re.IGNORECASE)
@@ -506,14 +526,15 @@ class DetectionKeywordService:
         return None
 
     @classmethod
-    def detect_sport(cls, text: str) -> str | None:
+    def detect_sport(cls, text: str) -> str | list[str] | None:
         """Detect sport name from text.
 
         Args:
             text: Stream name to check
 
         Returns:
-            Sport name (e.g., 'Hockey', 'Soccer') or None
+            Sport name (e.g., 'Hockey'), list of sports for ambiguous
+            terms (e.g., ['Soccer', 'Football']), or None
         """
         for pattern, sport in cls.get_sport_hints():
             if pattern.search(text):

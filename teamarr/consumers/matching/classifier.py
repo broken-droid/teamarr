@@ -52,7 +52,8 @@ class ClassifiedStream:
     league_hint: str | list[str] | None = None
 
     # Detected sport hint (e.g., "Hockey", "Football")
-    sport_hint: str | None = None
+    # Can be a list for ambiguous terms (e.g., ["Soccer", "Football"])
+    sport_hint: str | list[str] | None = None
 
     # Track if custom regex was used
     custom_regex_used: bool = False

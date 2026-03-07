@@ -468,28 +468,27 @@ LEAGUE_HINT_PATTERNS: list[tuple[str, str | list[str]]] = [
 # Patterns are case-insensitive, checked in order
 # =============================================================================
 
-SPORT_HINT_PATTERNS: list[tuple[str, str]] = [
+SPORT_HINT_PATTERNS: list[tuple[str, str | list[str]]] = [
     # Hockey variants - must come before generic patterns
     (r"\b(ice\s+)?hockey\b", "Hockey"),
     (r"\bnhl\b", "Hockey"),
     (r"\bahl\b", "Hockey"),
     (r"\bpwhl\b", "Hockey"),
-    # Football variants
-    (r"\b(american\s+)?football\b", "Football"),
+    # American Football — require explicit context
+    (r"\bamerican\s+football\b", "Football"),
+    (r"\bcollege\s+football\b", "Football"),
     (r"\bnfl\b", "Football"),
     (r"\bncaaf\b", "Football"),
+    # Football (bare) — ambiguous, matches both soccer and American football
+    (r"\bfootball\b", ["Soccer", "Football"]),
     # Basketball
     (r"\bbasketball\b", "Basketball"),
     (r"\bnba\b", "Basketball"),
     (r"\bncaab\b", "Basketball"),
     (r"\bncaam\b", "Basketball"),
     (r"\bncaaw\b", "Basketball"),
-    # Soccer/Football (association)
+    # Soccer — unambiguous
     (r"\bsoccer\b", "Soccer"),
-    (
-        r"\bfootball\b(?!\s*(nfl|american|college))",
-        "Soccer",
-    ),  # "Football" without NFL context = Soccer
     # Baseball
     (r"\bbaseball\b", "Baseball"),
     (r"\bmlb\b", "Baseball"),

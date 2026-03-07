@@ -73,7 +73,7 @@ def is_placeholder(text: str) -> bool:
     return False
 
 
-def detect_sport_hint(text: str) -> str | None:
+def detect_sport_hint(text: str) -> str | list[str] | None:
     """Detect sport type from stream name.
 
     Scans for sport keywords anywhere in the stream name.
@@ -82,12 +82,13 @@ def detect_sport_hint(text: str) -> str | None:
         "US (BTN+) | Ice Hockey (W): Minnesota at Wisconsin" → "Hockey"
         "ESPN: NFL Sunday Football" → "Football"
         "Swimming: 100m Freestyle" → "Swimming"
+        "English Football League: ..." → ["Soccer", "Football"]
 
     Args:
         text: Stream name to check
 
     Returns:
-        Sport name if detected, None otherwise
+        Sport name, list of sports for ambiguous terms, or None
     """
     if not text:
         return None
@@ -327,7 +328,9 @@ class StreamFilter:
 
                 # 2b. Unsupported sport detection
                 sport = detect_sport_hint(name)
-                if sport and sport in UNSUPPORTED_SPORTS:
+                # For multi-sport hints, only filter if ALL are unsupported
+                sports = sport if isinstance(sport, list) else [sport] if sport else []
+                if sports and all(s in UNSUPPORTED_SPORTS for s in sports):
                     logger.debug(
                         "[FILTER] Unsupported sport '%s': %s (id=%s)",
                         sport,

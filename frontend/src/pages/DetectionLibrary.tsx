@@ -80,6 +80,27 @@ const TAB_NAMES: Record<TabType, string> = {
   separators: "Separators",
 }
 
+/** Parse a sport hint target_value, which may be a JSON array or plain string. */
+function parseSportTarget(value: string | null): string[] {
+  if (!value) return []
+  if (value.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(value)
+      if (Array.isArray(parsed)) return parsed.filter((s: unknown) => typeof s === "string")
+    } catch {
+      // fall through
+    }
+  }
+  return [value]
+}
+
+/** Serialize sport targets for storage. Single value → plain string, multiple → JSON array. */
+function serializeSportTarget(sports: string[]): string {
+  if (sports.length === 0) return ""
+  if (sports.length === 1) return sports[0]
+  return JSON.stringify(sports)
+}
+
 export function DetectionLibrary() {
   const [activeTab, setActiveTab] = useState<TabType>("team_aliases")
   const [showAddDialog, setShowAddDialog] = useState(false)
@@ -183,10 +204,16 @@ export function DetectionLibrary() {
   }
 
   const openEditDialog = (keyword: DetectionKeyword) => {
+    let displayTarget = keyword.target_value || ""
+    // Deserialize JSON arrays to comma-separated for sport_hints editing
+    if (activeTab === "sport_hints" && displayTarget.startsWith("[")) {
+      const sports = parseSportTarget(displayTarget)
+      displayTarget = sports.join(", ")
+    }
     setFormData({
       keyword: keyword.keyword,
       is_regex: keyword.is_regex,
-      target_value: keyword.target_value || "",
+      target_value: displayTarget,
       enabled: keyword.enabled,
       priority: keyword.priority,
       description: keyword.description || "",
@@ -196,11 +223,16 @@ export function DetectionLibrary() {
 
   const handleCreate = async () => {
     try {
+      let targetValue = formData.target_value.trim() || null
+      if (targetValue && activeTab === "sport_hints" && targetValue.includes(",")) {
+        const sports = targetValue.split(",").map((s) => s.trim()).filter(Boolean)
+        targetValue = serializeSportTarget(sports)
+      }
       const data: DetectionKeywordCreate = {
         category: activeTab as CategoryType,
         keyword: formData.keyword.trim(),
         is_regex: formData.is_regex,
-        target_value: formData.target_value.trim() || null,
+        target_value: targetValue,
         enabled: formData.enabled,
         priority: formData.priority,
         description: formData.description.trim() || null,
@@ -233,12 +265,17 @@ export function DetectionLibrary() {
   const handleUpdate = async () => {
     if (!editingKeyword) return
     try {
+      let targetValue = formData.target_value.trim() || null
+      if (targetValue && activeTab === "sport_hints" && targetValue.includes(",")) {
+        const sports = targetValue.split(",").map((s) => s.trim()).filter(Boolean)
+        targetValue = serializeSportTarget(sports)
+      }
       await updateMutation.mutateAsync({
         id: editingKeyword.id,
         data: {
           keyword: formData.keyword.trim(),
           is_regex: formData.is_regex,
-          target_value: formData.target_value.trim() || null,
+          target_value: targetValue,
           enabled: formData.enabled,
           priority: formData.priority,
           description: formData.description.trim() || null,
@@ -540,7 +577,15 @@ export function DetectionLibrary() {
                     {activeInfo?.has_target && (
                       <TableCell>
                         {kw.target_value ? (
-                          <code className="text-sm font-mono">{kw.target_value}</code>
+                          activeTab === "sport_hints" && kw.target_value.startsWith("[") ? (
+                            <div className="flex gap-1 flex-wrap">
+                              {parseSportTarget(kw.target_value).map((s) => (
+                                <Badge key={s} variant="secondary" className="text-xs font-mono">{s}</Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <code className="text-sm font-mono">{kw.target_value}</code>
+                          )
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
@@ -667,8 +712,15 @@ export function DetectionLibrary() {
                 <Input
                   value={formData.target_value}
                   onChange={(e) => setFormData((f) => ({ ...f, target_value: e.target.value }))}
-                  placeholder="e.g., nfl, Hockey, main_card"
+                  placeholder={activeTab === "sport_hints"
+                    ? "e.g., Hockey or Soccer, Football for multiple"
+                    : "e.g., nfl, Hockey, main_card"}
                 />
+                {activeTab === "sport_hints" && (
+                  <p className="text-xs text-muted-foreground">
+                    Comma-separated for multiple sports (e.g., &quot;Soccer, Football&quot; for ambiguous terms)
+                  </p>
+                )}
               </div>
             )}
 
