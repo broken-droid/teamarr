@@ -35,7 +35,7 @@ These leagues have high event volume (e.g., cup competitions with many concurren
 - IPL, BBL, SA20 (cricket)
 - Svenska Cupen (soccer)
 
-Without a premium key, cricket leagues fall back to Cricbuzz for schedules.
+Without a premium key, cricket leagues will have limited event coverage (5 events per day per league).
 
 ## Configuration
 
@@ -51,10 +51,6 @@ Teamarr enforces rate limits proactively using a sliding window limiter:
 
 If the API returns HTTP 429, Teamarr retries with exponential backoff (5s, 10s, 20s, 40s, 80s).
 
-## Cricket Hybrid Mode
+## Cricket
 
-When no premium key is configured, cricket leagues use a hybrid provider:
-- **Teams/logos**: from TSDB (cached in `team_cache`)
-- **Schedules/events**: from Cricbuzz (web scraping)
-
-With a premium key, cricket routes directly to TSDB for everything.
+Cricket leagues (IPL, BBL, SA20) are premium tier. A premium key is recommended for full event coverage. Without one, TSDB's free tier returns up to 5 events per day per league, which may miss concurrent matches.

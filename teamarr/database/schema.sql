@@ -341,7 +341,7 @@ CREATE TABLE IF NOT EXISTS settings (
         CHECK(global_consolidation_mode IN ('consolidate', 'separate')),
 
     -- Schema Version
-    schema_version INTEGER DEFAULT 66
+    schema_version INTEGER DEFAULT 67
 );
 
 -- Insert default settings
@@ -728,12 +728,12 @@ CREATE TABLE IF NOT EXISTS leagues (
     league_code TEXT PRIMARY KEY,            -- 'nfl', 'ohl', 'eng.1'
 
     -- Provider/API Configuration
-    provider TEXT NOT NULL,                  -- 'espn', 'tsdb', 'cricbuzz', 'hockeytech'
-    provider_league_id TEXT NOT NULL,        -- ESPN: 'football/nfl', Cricbuzz: '9241/indian-premier-league-2026'
+    provider TEXT NOT NULL,                  -- 'espn', 'tsdb', 'hockeytech', 'mlbstats'
+    provider_league_id TEXT NOT NULL,        -- ESPN: 'football/nfl', TSDB: '4460', MLB: '117'
     provider_league_name TEXT,               -- TSDB only: exact strLeague for API calls
-    series_slug_pattern TEXT,                -- Cricbuzz only: base slug for auto-discovery (e.g., 'indian-premier-league')
-    fallback_provider TEXT,                  -- Fallback provider if primary unavailable (e.g., 'cricbuzz' when TSDB has no premium key)
-    fallback_league_id TEXT,                 -- Provider league ID for fallback (e.g., Cricbuzz series ID)
+    series_slug_pattern TEXT,                -- Reserved for future use
+    fallback_provider TEXT,                  -- Reserved for future use
+    fallback_league_id TEXT,                 -- Reserved for future use
     enabled INTEGER DEFAULT 1,               -- Is this league active?
 
     -- Display Configuration
@@ -924,12 +924,10 @@ INSERT OR REPLACE INTO leagues (league_code, provider, provider_league_id, provi
     ('nll', 'espn', 'lacrosse/nll', NULL, 'National Lacrosse League', 'lacrosse', 'https://a.espncdn.com/guid/5f77fe12-e54f-41a1-904e-77135452f348/logos/default.png', NULL, 1, 'NLL', 'nll', 'team_vs_team', NULL, NULL, NULL, NULL),
     ('pll', 'espn', 'lacrosse/pll', NULL, 'Premier Lacrosse League', 'lacrosse', 'https://a.espncdn.com/combiner/i?img=/i/teamlogos/leagues/500/pll.png', NULL, 1, 'PLL', 'pll', 'team_vs_team', NULL, NULL, NULL, NULL),
 
-    -- Cricket (TSDB primary, Cricbuzz fallback)
-    -- TSDB provides teams/logos year-round; Cricbuzz provides schedules when TSDB free tier limited
-    -- fallback_league_id format: 'series_id/url-slug' (changes yearly - auto-discovered by cache refresh)
-    ('ipl', 'tsdb', '4460', 'Indian Premier League', 'Indian Premier League', 'cricket', 'https://r2.thesportsdb.com/images/media/league/badge/gaiti11741709844.png', NULL, 1, 'IPL', 'ipl', 'team_vs_team', NULL, 'cricbuzz', '9241/indian-premier-league-2026', 'premium'),
-    ('bbl', 'tsdb', '4461', 'Australian Big Bash League', 'Big Bash League', 'cricket', 'https://r2.thesportsdb.com/images/media/league/badge/yko7ny1546635346.png', NULL, 1, 'BBL', 'bbl', 'team_vs_team', NULL, 'cricbuzz', '10289/big-bash-league-2025-26', 'premium'),
-    ('sa20', 'tsdb', '5532', 'SA20', 'South Africa Twenty20', 'cricket', 'https://r2.thesportsdb.com/images/media/league/badge/aakvuk1734183412.png', NULL, 1, 'SA20', 'sa20', 'team_vs_team', NULL, 'cricbuzz', '10394/sa20-2025-26', 'premium'),
+    -- Cricket (TSDB) - Premium tier, requires TSDB premium key for full event coverage
+    ('ipl', 'tsdb', '4460', 'Indian Premier League', 'Indian Premier League', 'cricket', 'https://r2.thesportsdb.com/images/media/league/badge/gaiti11741709844.png', NULL, 1, 'IPL', 'ipl', 'team_vs_team', NULL, NULL, NULL, 'premium'),
+    ('bbl', 'tsdb', '4461', 'Australian Big Bash League', 'Big Bash League', 'cricket', 'https://r2.thesportsdb.com/images/media/league/badge/yko7ny1546635346.png', NULL, 1, 'BBL', 'bbl', 'team_vs_team', NULL, NULL, NULL, 'premium'),
+    ('sa20', 'tsdb', '5532', 'SA20', 'South Africa Twenty20', 'cricket', 'https://r2.thesportsdb.com/images/media/league/badge/aakvuk1734183412.png', NULL, 1, 'SA20', 'sa20', 'team_vs_team', NULL, NULL, NULL, 'premium'),
 
     -- Rugby (TSDB)
     ('nrl', 'tsdb', '4416', 'Australian National Rugby League', 'National Rugby League', 'rugby', 'https://r2.thesportsdb.com/images/media/league/badge/gsztcj1552071996.png', NULL, 1, 'NRL', 'nrl', 'team_vs_team', NULL, NULL, NULL, 'free'),
@@ -937,13 +935,6 @@ INSERT OR REPLACE INTO leagues (league_code, provider, provider_league_id, provi
 
     -- Boxing (TSDB) - Combat sport with event cards
     ('boxing', 'tsdb', '4445', 'Boxing', 'Boxing', 'boxing', NULL, NULL, 0, NULL, 'boxing', 'event_card', NULL, NULL, NULL, 'free');
-
--- Cricbuzz auto-discovery patterns (base slug without year suffix)
--- These are used by cache refresh to find current season's series ID
-UPDATE leagues SET series_slug_pattern = 'indian-premier-league' WHERE league_code = 'ipl';
-UPDATE leagues SET series_slug_pattern = 'big-bash-league' WHERE league_code = 'bbl';
-UPDATE leagues SET series_slug_pattern = 'sa20' WHERE league_code = 'sa20';
-
 
 -- =============================================================================
 -- STREAM_MATCH_CACHE TABLE
@@ -1649,3 +1640,7 @@ WHERE template_id IS NOT NULL
 -- Add tsdb_tier column to leagues table for free/premium classification
 -- Free tier: 5 events/day/league, 30 req/min (key "123")
 -- Premium tier: full event coverage, 100 req/min (>3 digit key)
+
+-- v67: Remove Cricbuzz provider
+-- Cricket leagues now use TSDB exclusively (no Cricbuzz fallback)
+-- Clear fallback_provider, fallback_league_id, series_slug_pattern for cricket leagues

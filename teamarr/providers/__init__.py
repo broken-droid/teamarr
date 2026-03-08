@@ -15,8 +15,6 @@ ProviderRegistry.initialize() must be called during app startup
 to inject the LeagueMappingSource into providers.
 """
 
-from teamarr.providers.cricbuzz import CricbuzzClient, CricbuzzProvider
-from teamarr.providers.cricket_hybrid import CricketHybridProvider
 from teamarr.providers.espn import ESPNClient, ESPNProvider
 from teamarr.providers.hockeytech import HockeyTechClient, HockeyTechProvider
 from teamarr.providers.mlbstats import MLBStatsClient, MLBStatsProvider
@@ -96,28 +94,6 @@ def _create_mlbstats_provider() -> MLBStatsProvider:
     )
 
 
-def _create_cricbuzz_provider() -> CricbuzzProvider:
-    """Factory for Cricbuzz provider with injected dependencies."""
-    return CricbuzzProvider(
-        league_mapping_source=ProviderRegistry.get_league_mapping_source(),
-    )
-
-
-def _create_cricket_hybrid_provider() -> CricketHybridProvider:
-    """Factory for cricket hybrid provider.
-
-    Combines TSDB (teams/logos from cache) with Cricbuzz (events/schedules).
-    Used when TSDB API key is free tier (not premium).
-    """
-    from teamarr.database import get_db
-
-    return CricketHybridProvider(
-        cricbuzz_provider=_create_cricbuzz_provider(),
-        league_mapping_source=ProviderRegistry.get_league_mapping_source(),
-        db_factory=get_db,
-    )
-
-
 # =============================================================================
 # PROVIDER REGISTRATION
 # =============================================================================
@@ -149,22 +125,6 @@ ProviderRegistry.register(
 )
 
 ProviderRegistry.register(
-    name="cricbuzz",
-    provider_class=CricbuzzProvider,
-    factory=_create_cricbuzz_provider,
-    priority=60,  # DEPRECATED: Only used internally by cricket_hybrid
-    enabled=False,
-)
-
-ProviderRegistry.register(
-    name="cricket_hybrid",
-    provider_class=CricketHybridProvider,
-    factory=_create_cricket_hybrid_provider,
-    priority=55,  # DEPRECATED: Free-tier fallback only. When TSDB has premium key,
-    enabled=True,  # cricket_hybrid declines and TSDB handles cricket directly.
-)
-
-ProviderRegistry.register(
     name="tsdb",
     provider_class=TSDBProvider,
     factory=_create_tsdb_provider,
@@ -190,10 +150,6 @@ __all__ = [
     # MLB Stats
     "MLBStatsClient",
     "MLBStatsProvider",
-    # Cricket
-    "CricbuzzClient",
-    "CricbuzzProvider",
-    "CricketHybridProvider",
     # TheSportsDB
     "RateLimitStats",
     "TSDBClient",

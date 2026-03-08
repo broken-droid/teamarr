@@ -395,11 +395,9 @@ class LeagueMappingService:
             Tuple of (provider_name, provider_league_id) or None if not found.
 
         Example:
-            For IPL with TSDB free tier:
-            - Primary: ('tsdb', '4460')
-            - Fallback: ('cricbuzz', '9241/indian-premier-league-2026')
+            For IPL: returns ('tsdb', '4460')
 
-            If TSDB is not premium, returns fallback if configured.
+            If the primary provider is not premium, returns fallback if configured.
         """
         key_lower = league_code.lower()
 

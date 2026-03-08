@@ -1509,6 +1509,25 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("[MIGRATE] Schema upgraded to version 66 (TSDB tiered provider model)")
         current_version = 66
 
+    # ==========================================================================
+    # v67: Remove Cricbuzz provider
+    # ==========================================================================
+    # Cricbuzz and cricket_hybrid providers fully removed. Cricket leagues now
+    # use TSDB exclusively. Clear fallback references from existing databases.
+    if current_version < 67:
+        try:
+            conn.execute(
+                """UPDATE leagues SET fallback_provider = NULL, fallback_league_id = NULL,
+                   series_slug_pattern = NULL
+                   WHERE fallback_provider = 'cricbuzz'"""
+            )
+        except sqlite3.OperationalError:
+            pass  # Table doesn't exist in minimal test databases
+
+        conn.execute("UPDATE settings SET schema_version = 67 WHERE id = 1")
+        logger.info("[MIGRATE] Schema upgraded to version 67 (remove Cricbuzz provider)")
+        current_version = 67
+
 
 def _dedup_cross_group_channels(conn: sqlite3.Connection) -> None:
     """Merge duplicate channels that exist for the same event across groups.

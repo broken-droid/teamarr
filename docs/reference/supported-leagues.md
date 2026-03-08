@@ -30,7 +30,6 @@ Leagues have different levels of support:
 | **MLB Stats API** | Minor League Baseball (MiLB) — Triple-A, Double-A, High-A, Single-A, Rookie |
 | **TheSportsDB** | Australian sports, rugby, cricket, boxing, CFL, Scandinavian leagues. Free and [premium tiers](providers/tsdb.md). |
 | **HockeyTech** | Canadian and US junior/minor hockey leagues (CHL, AHL, ECHL, PWHL, USHL, Junior A) |
-| **Cricbuzz** | Cricket schedules (free-tier fallback when TSDB premium key not configured) |
 
 ### TSDB Tier Legend
 
@@ -244,14 +243,14 @@ Combat sports use "Event Card" matching rather than team vs team matching.
 
 ## Cricket
 
-| League | ID | Provider | Fallback |
-|--------|-----|----------|----------|
-| Indian Premier League | `ipl` | TSDB **P** | Cricbuzz |
-| Big Bash League | `bbl` | TSDB **P** | Cricbuzz |
-| SA20 | `sa20` | TSDB **P** | Cricbuzz |
+| League | ID | Provider |
+|--------|-----|----------|
+| Indian Premier League | `ipl` | TSDB **P** |
+| Big Bash League | `bbl` | TSDB **P** |
+| SA20 | `sa20` | TSDB **P** |
 
 {: .note }
-Cricket leagues are TSDB premium tier. Without a premium key, Teamarr uses Cricbuzz for schedules (TSDB still provides team data and logos). With a premium key, TSDB handles everything directly.
+Cricket leagues are TSDB premium tier. A [premium API key](providers/tsdb.md) is required for full event coverage.
 
 ---
 
