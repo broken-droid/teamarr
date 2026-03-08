@@ -97,7 +97,7 @@ When asked to plan a feature, create an epic with implementation beads that have
 
 When the user says **"release"**, **"/release"**, or **"version bump"**, execute this workflow:
 
-1. **Determine scope** — `git log upstream/main..upstream/dev --oneline` to see all commits in the release
+1. **Determine scope** — `git log origin/main..origin/dev --oneline` to see all commits in the release
 2. **Ask version** — suggest patch (x.y.Z) vs minor (x.Y.0) based on scope. User decides.
 3. **Quality gates** (MANDATORY):
    ```bash
@@ -107,12 +107,12 @@ When the user says **"release"**, **"/release"**, or **"version bump"**, execute
    cd frontend && npm run build
    ```
 4. **Version bump** — edit `pyproject.toml` line 7, commit "Bump version to x.y.z"
-5. **Push dev** — push to both origin and upstream dev
+5. **Push dev** — `git push origin dev`
 6. **Merge to main** — fast-forward merge:
    ```bash
-   git checkout main && git pull upstream main
+   git checkout main && git pull origin main
    git merge dev --no-edit
-   git push upstream main && git push origin main
+   git push origin main
    git checkout dev
    ```
 7. **Create GitHub release** — `gh release create v<version> --repo Pharaoh-Labs/teamarr --target main` with summarized release notes (not commit-by-commit — group into categories)
@@ -182,17 +182,15 @@ Get version from `pyproject.toml` line 7, append `-dev+<short_hash>` of HEAD com
 - Each item is one concise line — no multi-line descriptions
 - No extra commentary — just the changelog block ready to paste
 
-## Git Remotes & Preferences
+## Git Remote & Preferences
 
-**Two remotes:**
+**Single remote:**
 | Remote | Repo | Purpose |
 |--------|------|---------|
-| `origin` | `Pharaoh-Labs/teamarrv2` | Staging repo for syncing local work |
-| `upstream` | `Pharaoh-Labs/teamarr` | Public repo: dev releases for testers, mainline releases |
+| `origin` | `Pharaoh-Labs/teamarr` | All development, releases, and PRs |
 
 **Rules:**
-- Push to `origin dev` only (never push to `upstream` unless explicitly asked)
-- Upstream pushes happen in batches for dev releases
+- Push to `origin dev` after completing work
 - No commit watermarks or co-authored-by
 - Concise, focused commit messages
 
