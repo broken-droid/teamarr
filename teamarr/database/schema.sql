@@ -906,6 +906,9 @@ INSERT OR REPLACE INTO leagues (league_code, provider, provider_league_id, provi
     ('jpn.1', 'espn', 'soccer/jpn.1', NULL, 'J1 League', 'soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/1842.png', NULL, 1, 'J-League', 'jleague', 'team_vs_team', 'J1 League Soccer', NULL, NULL, NULL),
     ('aus.1', 'espn', 'soccer/aus.1', NULL, 'A-League Men', 'soccer', 'https://a.espncdn.com/i/leaguelogos/soccer/500/114.png', NULL, 1, 'A-League', 'aleague', 'team_vs_team', 'A-League Men Soccer', NULL, NULL, NULL),
 
+    -- Soccer (TSDB Premium) - Leagues requiring premium key for full event coverage
+    ('svenska-cupen', 'tsdb', '4756', 'Svenska Cupen', 'Svenska Cupen', 'soccer', 'https://r2.thesportsdb.com/images/media/league/badge/p37u1n1694211430.png', NULL, 1, NULL, 'svenska-cupen', 'team_vs_team', NULL, NULL, NULL, 'premium'),
+
     -- MMA (ESPN) - Combat sport with event cards
     ('ufc', 'espn', 'mma/ufc', NULL, 'Ultimate Fighting Championship', 'mma', 'https://a.espncdn.com/i/teamlogos/leagues/500/ufc.png', NULL, 0, 'UFC', 'ufc', 'event_card', NULL, NULL, NULL, NULL),
 
