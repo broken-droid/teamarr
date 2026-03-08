@@ -116,11 +116,18 @@ class RateLimiter:
     """Sliding window rate limiter with statistics tracking.
 
     Tracks all wait events for UI feedback. Never fails - always waits and continues.
-    Premium API keys bypass rate limiting entirely.
+
+    Rate limits per TSDB tier:
+    - Free: 30 req/min, 10 teams/search, 5 events/day
+    - Premium: 100 req/min, 3000 teams/search, 3000 events/season
     """
 
     # Cooldown duration when internal limit is hit (seconds)
     INTERNAL_COOLDOWN = 30.0
+
+    # Per-tier rate limits (requests per minute)
+    FREE_RATE_LIMIT = 30
+    PREMIUM_RATE_LIMIT = 100
 
     def __init__(
         self,
@@ -128,7 +135,7 @@ class RateLimiter:
         window_seconds: float = 60.0,
         is_premium: bool = False,
     ):
-        self._max_requests = max_requests
+        self._max_requests = self.PREMIUM_RATE_LIMIT if is_premium else max_requests
         self._window = window_seconds
         self._is_premium = is_premium
         self._requests: deque[float] = deque()
@@ -155,15 +162,9 @@ class RateLimiter:
     def acquire(self) -> None:
         """Block until a request slot is available. Never fails.
 
-        Premium API keys skip rate limiting entirely.
-        Free API keys wait 30 seconds when limit is reached.
+        Both tiers are rate-limited (free: 30/min, premium: 100/min).
+        Waits 30 seconds when limit is reached.
         """
-        # Premium keys bypass rate limiting
-        if self._is_premium:
-            with self._lock:
-                self._stats.total_requests += 1
-            return
-
         with self._lock:
             self._stats.total_requests += 1
             now = time.time()
@@ -180,8 +181,9 @@ class RateLimiter:
                 self._stats.last_wait_at = datetime.now()
                 self._stats.last_wait_seconds = self.INTERNAL_COOLDOWN
 
+                tier = "premium" if self._is_premium else "free"
                 logger.info(
-                    f"TSDB free API limit reached ({self._max_requests}/min). "
+                    f"TSDB {tier} API limit reached ({self._max_requests}/min). "
                     f"Waiting {self.INTERNAL_COOLDOWN:.0f}s..."
                 )
 
@@ -267,7 +269,7 @@ class TSDBClient:
                 is_premium=self.is_premium,
             )
             if self.is_premium:
-                logger.info("[TSDB] Using premium API key - rate limiting disabled")
+                logger.info("[TSDB] Using premium API key (100 req/min)")
         return self._rate_limiter
 
     def _get_client(self) -> httpx.Client:

@@ -82,6 +82,22 @@ export interface DisplaySettings {
   tsdb_api_key: string | null  // Optional TheSportsDB premium API key
 }
 
+export interface TSDBKeyValidationResult {
+  valid: boolean
+  is_premium: boolean
+  message: string
+}
+
+export async function validateTSDBKey(apiKey: string): Promise<TSDBKeyValidationResult> {
+  const res = await fetch("/api/settings/tsdb/validate-key", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ api_key: apiKey }),
+  })
+  if (!res.ok) throw new Error(`Validation failed: ${res.status}`)
+  return res.json()
+}
+
 export interface TeamFilterEntry {
   provider: string
   team_id: string

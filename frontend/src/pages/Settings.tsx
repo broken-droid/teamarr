@@ -94,7 +94,9 @@ import type {
   ChannelNumberingSettings,
   UpdateCheckSettings,
   SubscriptionLeagueConfig,
+  TSDBKeyValidationResult,
 } from "@/api/settings"
+import { validateTSDBKey } from "@/api/settings"
 
 function formatRelativeTime(dateStr: string | null): string {
   if (!dateStr) return "Never"
@@ -929,6 +931,8 @@ export function Settings() {
   const [epg, setEPG] = useState<EPGSettings | null>(null)
   const [durations, setDurations] = useState<DurationSettings | null>(null)
   const [display, setDisplay] = useState<DisplaySettings | null>(null)
+  const [tsdbValidation, setTsdbValidation] = useState<TSDBKeyValidationResult | null>(null)
+  const [tsdbValidating, setTsdbValidating] = useState(false)
   const [channelNumbering, setChannelNumbering] = useState<ChannelNumberingSettings>({
     global_channel_mode: "auto",
     league_channel_starts: {},
@@ -3172,20 +3176,51 @@ export function Settings() {
       <Card>
         <CardHeader>
           <CardTitle>TheSportsDB API Key</CardTitle>
-          <CardDescription>Optional premium API key for higher rate limits</CardDescription>
+          <CardDescription>Optional premium API key for full event coverage and higher rate limits</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="tsdb-api-key">API Key</Label>
-            <Input
-              id="tsdb-api-key"
-              type="password"
-              value={display?.tsdb_api_key ?? ""}
-              onChange={(e) => display && setDisplay({ ...display, tsdb_api_key: e.target.value })}
-              placeholder="Leave blank to use free tier"
-            />
+            <div className="flex gap-2">
+              <Input
+                id="tsdb-api-key"
+                type="password"
+                value={display?.tsdb_api_key ?? ""}
+                onChange={(e) => {
+                  display && setDisplay({ ...display, tsdb_api_key: e.target.value })
+                  setTsdbValidation(null)
+                }}
+                placeholder="Leave blank to use free tier"
+                className="flex-1"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={tsdbValidating || !display?.tsdb_api_key}
+                onClick={async () => {
+                  if (!display?.tsdb_api_key) return
+                  setTsdbValidating(true)
+                  setTsdbValidation(null)
+                  try {
+                    const result = await validateTSDBKey(display.tsdb_api_key)
+                    setTsdbValidation(result)
+                  } catch {
+                    setTsdbValidation({ valid: false, is_premium: false, message: "Connection error" })
+                  } finally {
+                    setTsdbValidating(false)
+                  }
+                }}
+              >
+                {tsdbValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Validate"}
+              </Button>
+            </div>
+            {tsdbValidation && (
+              <p className={`text-xs ${tsdbValidation.valid ? (tsdbValidation.is_premium ? "text-green-500" : "text-yellow-500") : "text-red-500"}`}>
+                {tsdbValidation.message}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
-              Premium key ($9/mo) gives higher rate limits. Free tier works for most users.
+              Premium key ($9/mo) unlocks full event coverage for leagues like Svenska Cupen, plus 100 req/min (vs 30 free).
               Get a key at <a href="https://www.thesportsdb.com/pricing" target="_blank" rel="noopener noreferrer" className="underline">thesportsdb.com/pricing</a>
             </p>
           </div>

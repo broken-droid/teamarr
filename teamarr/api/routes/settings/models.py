@@ -219,6 +219,20 @@ class DisplaySettingsModel(BaseModel):
     tsdb_api_key: str | None = None  # Optional TheSportsDB premium API key
 
 
+class TSDBKeyValidationRequest(BaseModel):
+    """Request to validate a TSDB API key."""
+
+    api_key: str = Field(..., description="TSDB API key to validate")
+
+
+class TSDBKeyValidationResponse(BaseModel):
+    """Response from TSDB API key validation."""
+
+    valid: bool
+    is_premium: bool = False
+    message: str
+
+
 # =============================================================================
 # TEAM FILTER SETTINGS
 # =============================================================================

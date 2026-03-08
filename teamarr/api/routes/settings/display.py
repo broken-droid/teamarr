@@ -9,6 +9,8 @@ from teamarr.database import get_db
 from .models import (
     DisplaySettingsModel,
     ReconciliationSettingsModel,
+    TSDBKeyValidationRequest,
+    TSDBKeyValidationResponse,
 )
 
 router = APIRouter()
@@ -199,3 +201,72 @@ def update_display_settings_endpoint(update: DisplaySettingsModel):
         xmltv_generator_url=settings.display.xmltv_generator_url,
         tsdb_api_key=tsdb_api_key,
     )
+
+
+# =============================================================================
+# TSDB API KEY VALIDATION
+# =============================================================================
+
+TSDB_FREE_KEY = "123"
+
+
+@router.post("/settings/tsdb/validate-key", response_model=TSDBKeyValidationResponse)
+def validate_tsdb_key(request: TSDBKeyValidationRequest):
+    """Validate a TSDB API key before saving.
+
+    Tests the key against a lightweight TSDB endpoint (lookupleague.php).
+    Premium keys have >3 digits; free key is "123".
+    """
+    import httpx
+
+    key = request.api_key.strip()
+    if not key:
+        return TSDBKeyValidationResponse(
+            valid=False, is_premium=False, message="API key cannot be empty"
+        )
+
+    # Premium keys are >3 digits; "123" is the free tier key
+    is_premium = key != TSDB_FREE_KEY and len(key) > 3
+
+    # Test the key against a lightweight endpoint
+    url = f"https://www.thesportsdb.com/api/v1/json/{key}/lookupleague.php?id=4328"
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.get(url)
+
+        if resp.status_code == 404:
+            return TSDBKeyValidationResponse(
+                valid=False, is_premium=False, message="Invalid API key"
+            )
+
+        if resp.status_code != 200:
+            return TSDBKeyValidationResponse(
+                valid=False,
+                is_premium=False,
+                message=f"TSDB returned status {resp.status_code}",
+            )
+
+        # Valid keys return JSON with league data
+        data = resp.json()
+        if not data.get("leagues"):
+            return TSDBKeyValidationResponse(
+                valid=False, is_premium=False, message="Key accepted but returned no data"
+            )
+
+        if is_premium:
+            message = "Valid premium key — full event coverage, 100 req/min"
+        else:
+            message = "Valid free key — 5 events/day per league, 30 req/min"
+
+        return TSDBKeyValidationResponse(
+            valid=True, is_premium=is_premium, message=message
+        )
+
+    except httpx.TimeoutException:
+        return TSDBKeyValidationResponse(
+            valid=False, is_premium=False, message="Connection to TSDB timed out"
+        )
+    except Exception as e:
+        return TSDBKeyValidationResponse(
+            valid=False, is_premium=False, message=f"Connection error: {e}"
+        )
