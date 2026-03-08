@@ -2,12 +2,12 @@
 title: Supported Leagues
 parent: Technical Reference
 nav_order: 1
-docs_version: "2.4.0"
+docs_version: "2.3.0"
 ---
 
 # Supported Sports & Leagues
 
-Teamarr supports **97 pre-configured leagues** across 13 sports, plus **280+ dynamically discovered soccer leagues** from ESPN. Pre-configured leagues have full support (team import + event matching). Discovered leagues support event matching only.
+Teamarr supports **97 pre-configured leagues** across 13 sports, plus **240+ dynamically discovered soccer leagues** from ESPN. Pre-configured leagues have full support (team import + event matching). Discovered leagues support event matching only.
 
 ## Support Levels
 
@@ -26,7 +26,7 @@ Leagues have different levels of support:
 
 | Provider | Description |
 |----------|-------------|
-| **ESPN** | Primary provider for most US leagues and international soccer. Discovers 280+ soccer leagues dynamically. |
+| **ESPN** | Primary provider for most US leagues and international soccer. Discovers 240+ soccer leagues dynamically. |
 | **MLB Stats API** | Minor League Baseball (MiLB) — Triple-A, Double-A, High-A, Single-A, Rookie |
 | **TheSportsDB** | Australian sports, rugby, cricket, boxing, CFL, Scandinavian leagues. Free and [premium tiers](providers/tsdb.md). |
 | **HockeyTech** | Canadian and US junior/minor hockey leagues (CHL, AHL, ECHL, PWHL, USHL, Junior A) |
@@ -139,7 +139,7 @@ TSDB leagues are classified by tier. Most work on the free tier. Leagues marked 
 ## Soccer
 
 {: .tip }
-Teamarr automatically discovers **280+ soccer leagues** from ESPN's API during cache refresh. The leagues listed below are the pre-configured ones with full support (team import + event matching). All discovered leagues are available for event matching in event groups — select them from the league picker under the Soccer sport.
+Teamarr automatically discovers **240+ soccer leagues** from ESPN's API during cache refresh. The leagues listed below are the pre-configured ones with full support (team import + event matching). All discovered leagues are available for event matching in event groups — select them from the league picker under the Soccer sport.
 
 ### North America
 

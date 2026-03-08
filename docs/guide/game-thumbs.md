@@ -2,6 +2,7 @@
 title: Game Thumbs
 parent: User Guide
 nav_order: 9
+docs_version: "2.3.0"
 ---
 
 # Game Thumbs

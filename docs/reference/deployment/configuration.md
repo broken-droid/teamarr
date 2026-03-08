@@ -3,6 +3,7 @@ title: Configuration
 parent: Deployment
 grand_parent: Technical Reference
 nav_order: 2
+docs_version: "2.3.0"
 ---
 
 # Configuration

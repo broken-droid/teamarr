@@ -3,6 +3,7 @@ title: Templates
 parent: User Guide
 nav_order: 4
 has_children: true
+docs_version: "2.3.0"
 ---
 
 # Templates
@@ -69,7 +70,7 @@ Templates use variables enclosed in curly braces that get replaced with real dat
 
 **Event templates** don't use suffixes - each channel exists for a single event, so there's no "next" or "last" game to reference.
 
-See [Variables](variables) for the complete list of 161 available variables.
+See [Variables](variables) for the complete list of 192 available variables.
 
 ## Filler Content
 

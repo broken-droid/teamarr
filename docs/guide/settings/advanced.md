@@ -3,6 +3,7 @@ title: System
 parent: Settings
 grand_parent: User Guide
 nav_order: 7
+docs_version: "2.3.0"
 ---
 
 # System Settings

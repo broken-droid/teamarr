@@ -3,6 +3,7 @@ title: Examples
 parent: Templates
 grand_parent: User Guide
 nav_order: 4
+docs_version: "2.3.0"
 ---
 
 # Template Examples

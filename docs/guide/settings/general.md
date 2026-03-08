@@ -3,6 +3,7 @@ title: General
 parent: Settings
 grand_parent: User Guide
 nav_order: 1
+docs_version: "2.3.0"
 ---
 
 # General Settings

@@ -3,6 +3,7 @@ title: Settings
 parent: User Guide
 nav_order: 8
 has_children: true
+docs_version: "2.3.0"
 ---
 
 # Settings

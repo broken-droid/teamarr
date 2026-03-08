@@ -3,6 +3,7 @@ title: Event Groups
 parent: Settings
 grand_parent: User Guide
 nav_order: 3
+docs_version: "2.3.0"
 ---
 
 # Event Group Settings
@@ -50,5 +51,3 @@ A global team filter applied to all event groups that don't have their own filte
 
 {: .note }
 The filter only applies to leagues where you've made team selections. Leagues with no selections will match all events.
-
-See [Team Filters](../teams/team-filters) for more details.

@@ -3,6 +3,7 @@ title: Detection Keyword Service
 parent: Architecture
 grand_parent: Technical Reference
 nav_order: 6
+docs_version: "2.3.0"
 ---
 
 # Detection Keyword Service

@@ -2,6 +2,7 @@
 title: Dispatcharr Integration
 parent: User Guide
 nav_order: 3
+docs_version: "2.3.0"
 ---
 
 # Dispatcharr Integration

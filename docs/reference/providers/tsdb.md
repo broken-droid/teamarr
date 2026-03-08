@@ -3,7 +3,7 @@ title: TSDB
 parent: Providers
 grand_parent: Technical Reference
 nav_order: 2
-docs_version: "2.4.0"
+docs_version: "2.3.0"
 ---
 
 # TheSportsDB Provider

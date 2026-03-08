@@ -3,17 +3,32 @@ title: Creating Groups
 parent: Event Groups
 grand_parent: User Guide
 nav_order: 1
+docs_version: "2.3.0"
 ---
 
 # Creating Event Groups
 
-Event groups define how Teamarr matches M3U streams to sporting events and creates channels in Dispatcharr.
+Event groups connect M3U stream sources to Teamarr's sports data. Each group pulls streams from a Dispatcharr M3U account and matches them to real sporting events.
+
+## The Subscription Model
+
+Event groups use a **global subscription** to determine which sports and leagues to scan. This is configured in **Event Groups > Global Defaults**, not per-group.
+
+**Global Defaults** include:
+- **League subscriptions** — which non-soccer leagues to scan (e.g., NFL, NBA, NHL)
+- **Soccer mode** — how to handle soccer leagues (follow teams, select leagues, or all)
+- **Template assignments** — which template to use by sport or league
+- **Team filter** — include/exclude specific teams from matching
+
+All event groups inherit these defaults. Individual groups can override the subscription if needed (see Per-Group Overrides below).
 
 ## Basic Settings
 
+When creating or editing a group:
+
 ### Name
 
-A descriptive name for the group (e.g., "Sports Package", "Premium Events").
+A descriptive name for the group (e.g., "ESPN+ Sports", "NHL Backup").
 
 ### M3U Account
 
@@ -21,60 +36,101 @@ Select which Dispatcharr M3U account to pull streams from.
 
 ### Stream Group
 
-Select which stream group within the M3U account to use, or "All Groups" to include all streams.
+Select which stream group within the M3U account to use, or "All Groups" to include all streams from that account.
 
-### Template
+## Channel Configuration
 
-Select a template to format the EPG data for matched events. Templates control how channel names, descriptions, and program info are displayed.
-
-### Channel Mode
+### Channel Assignment Mode
 
 | Mode | Description |
 |------|-------------|
-| **Auto** | Teamarr automatically assigns channel numbers from the configured range |
-| **Manual** | You specify a fixed starting channel number |
+| **Auto** | Teamarr assigns channel numbers sequentially from the configured range |
+| **Manual** | You specify a fixed starting channel number for this group |
 
-## Sports & Leagues
+### Channel Group
 
-Select which sports and leagues this group should match. Only events from selected leagues will be matched to streams.
+How channels are assigned to Dispatcharr channel groups:
 
-You can select entire sports (all leagues) or specific leagues within a sport.
+- **Use Default** — inherit from Settings > Channels
+- **Static** — assign all channels to a specific group
+- **Dynamic** — use patterns like `{sport}` or `{league}` to auto-create groups
 
-## Channel Profiles
+### Channel Profiles
 
-Override the [global default channel profiles](../settings/integrations#default-channel-profiles) for this group.
+Override the global default channel profiles for this group:
 
-- **Use Default** - Inherit from global settings
-- **Custom Selection** - Choose specific profiles for this group
+- **Use Default** — inherit from Settings > Dispatcharr
+- **Custom** — choose specific profiles for this group
 
-### Dynamic Wildcards
-
-In addition to specific profiles, you can use wildcards that dynamically create and assign profiles:
-
-| Wildcard | Description | Example |
-|----------|-------------|---------|
-| `{sport}` | Profile named after the sport | `football`, `basketball` |
-| `{league}` | Profile named after the league | `nfl`, `nba`, `epl` |
-
-Wildcard profiles are created automatically in Dispatcharr if they don't exist.
-
-## Team Filter
-
-Override the [global default team filter](../settings/event-groups#default-team-filter) for this group.
-
-- **Use Default** - Inherit from global settings
-- **Custom Filter** - Define include/exclude teams specific to this group
+Dynamic wildcards like `{sport}` and `{league}` create profiles automatically in Dispatcharr.
 
 ## Stream Matching
 
-Configure how streams are matched to events. See [Stream Matching](stream-matching/) for details.
+### Stream Filters
+
+Control which streams from the M3U group are processed:
+
+- **Include regex** — only process streams matching this pattern
+- **Exclude regex** — skip streams matching this pattern
+
+### Custom Regex Extractors
+
+Override how Teamarr parses stream names. By default, the built-in classifier handles most formats. Use custom regex when your IPTV provider uses unusual naming.
+
+| Extractor | Purpose | Example Pattern |
+|-----------|---------|-----------------|
+| Teams | Extract team names | `(?P<home>.*)\s*vs\s*(?P<away>.*)` |
+| Date | Extract date | `\d{1,2}/\d{1,2}/\d{4}` |
+| Time | Extract time | `\d{1,2}:\d{2}\s*(?:AM\|PM)?` |
+| League | Extract league hint | `(?:NFL\|NBA\|NHL):` |
+| Fighters | Extract fighter names (MMA/Boxing) | `(?P<fighter1>.*)\s*vs\s*(?P<fighter2>.*)` |
+| Event name | Extract event name | — |
+
+Each extractor has an enable toggle. Leave disabled to use the built-in parser.
+
+## Team Filter
+
+Override the global default team filter for this group:
+
+- **Use Default** — inherit from Global Defaults
+- **Custom Filter** — define include/exclude teams specific to this group
+- **Bypass for playoffs** — auto-include all playoff games regardless of team filter
+
+## Duplicate Event Handling
+
+When the same sporting event appears in multiple streams:
+
+| Mode | Description |
+|------|-------------|
+| **Consolidate** | Merge streams into one channel (default) |
+| **Separate** | Create a separate channel for each stream |
+
+## Per-Group Subscription Overrides
+
+By default, groups inherit the global league subscription. To override:
+
+1. Edit the group
+2. Under "Subscription Override", toggle on custom leagues
+3. Select the specific leagues this group should scan
+
+This is useful when a stream source only covers certain sports (e.g., a hockey-only IPTV group that shouldn't waste time scanning for NFL events).
+
+## Channel Sort Order
+
+Controls how channels within this group are ordered:
+
+| Mode | Description |
+|------|-------------|
+| **Time** | Sort by event start time |
+| **Sport, then time** | Group by sport, then sort by time within each sport |
+| **League, then time** | Group by league, then sort by time within each league |
 
 ## Advanced Options
 
 ### Enabled
 
-Toggle the group on/off without deleting it.
+Toggle the group on/off without deleting it. Disabled groups are skipped during EPG generation.
 
 ### Priority
 
-When multiple groups could match the same stream, higher priority groups are checked first.
+When multiple groups could match the same stream, higher priority groups are checked first. Lower numbers = higher priority.

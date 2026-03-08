@@ -3,11 +3,12 @@ title: Variables
 parent: Templates
 grand_parent: User Guide
 nav_order: 2
+docs_version: "2.3.0"
 ---
 
 # Template Variables
 
-Templates use variables enclosed in curly braces that get replaced with real data when EPG is generated. Teamarr provides 175 variables across 17 categories.
+Templates use variables enclosed in curly braces that get replaced with real data when EPG is generated. Teamarr provides 192 variables across 17 categories.
 
 ## Suffix Support
 

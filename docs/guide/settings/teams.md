@@ -3,6 +3,7 @@ title: Teams
 parent: Settings
 grand_parent: User Guide
 nav_order: 2
+docs_version: "2.3.0"
 ---
 
 # Team Settings

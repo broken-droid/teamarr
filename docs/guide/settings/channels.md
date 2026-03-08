@@ -3,6 +3,7 @@ title: Channels
 parent: Settings
 grand_parent: User Guide
 nav_order: 5
+docs_version: "2.3.0"
 ---
 
 # Channels Settings
