@@ -1472,6 +1472,43 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         )
         current_version = 65
 
+    # ==========================================================================
+    # v66: TSDB Tiered Provider Model
+    # ==========================================================================
+    # Add tsdb_tier column to leagues table for free/premium classification.
+    # Free tier leagues work within TSDB free limits (5 events/day/league).
+    # Premium tier leagues need a premium key for full event coverage.
+    # The INSERT OR REPLACE in schema.sql handles new installs; this migration
+    # adds the column and sets values for existing databases.
+    if current_version < 66:
+        _add_column_if_not_exists(conn, "leagues", "tsdb_tier", "TEXT")
+
+        # Tag existing TSDB leagues with their tier
+        # Wrapped in try-except for minimal test databases without leagues table
+        try:
+            free_leagues = [
+                "cfl", "unrivaled", "norwegian-hockey", "afl",
+                "nrl", "super-rugby", "boxing",
+            ]
+            premium_leagues = ["ipl", "bbl", "sa20"]
+
+            for code in free_leagues:
+                conn.execute(
+                    "UPDATE leagues SET tsdb_tier = 'free' WHERE league_code = ?",
+                    (code,),
+                )
+            for code in premium_leagues:
+                conn.execute(
+                    "UPDATE leagues SET tsdb_tier = 'premium' WHERE league_code = ?",
+                    (code,),
+                )
+        except sqlite3.OperationalError:
+            pass  # Table doesn't exist in minimal test databases
+
+        conn.execute("UPDATE settings SET schema_version = 66 WHERE id = 1")
+        logger.info("[MIGRATE] Schema upgraded to version 66 (TSDB tiered provider model)")
+        current_version = 66
+
 
 def _dedup_cross_group_channels(conn: sqlite3.Connection) -> None:
     """Merge duplicate channels that exist for the same event across groups.
