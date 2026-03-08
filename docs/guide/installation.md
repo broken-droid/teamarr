@@ -2,6 +2,7 @@
 title: Installation
 parent: User Guide
 nav_order: 1
+docs_version: "2.3.0"
 ---
 
 # Installation
@@ -50,6 +51,40 @@ services:
 ```
 
 Open Teamarr at `http://<your-server>:9195`
+
+## Data Persistence
+
+All Teamarr data is stored in the `./data` volume mount:
+
+| Path | Contents |
+|------|----------|
+| `data/teamarr.db` | Database — teams, templates, settings, event groups, run history |
+| `data/logs/` | Log files (rotating, auto-managed) |
+| `data/epg/` | Generated XMLTV output |
+
+{: .warning }
+**Never delete `teamarr.db`** — it contains all your configuration. Schema upgrades are handled automatically via migrations on startup.
+
+## First Run
+
+On first startup, Teamarr will:
+
+1. Create the database and run all migrations
+2. Refresh the league and team cache from providers (~2-3 minutes)
+3. Start the web UI on port 9195
+
+The dashboard will show a **Getting Started** guide walking you through initial setup: connect to Dispatcharr, create templates, add teams or event groups.
+
+## Updating
+
+Pull the latest image and recreate the container:
+
+```bash
+docker compose pull teamarr
+docker compose up -d teamarr
+```
+
+Teamarr handles database migrations automatically — no manual steps needed between versions.
 
 {: .note }
 Advanced users familiar with Python may run Teamarr locally without Docker. Clone the repository and run `python app.py`.

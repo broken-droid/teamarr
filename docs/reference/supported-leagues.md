@@ -2,11 +2,12 @@
 title: Supported Leagues
 parent: Technical Reference
 nav_order: 1
+docs_version: "2.3.0"
 ---
 
 # Supported Sports & Leagues
 
-Teamarr supports a wide range of sports leagues through multiple data providers.
+Teamarr supports **96 pre-configured leagues** across 13 sports, plus **280+ dynamically discovered soccer leagues** from ESPN. Pre-configured leagues have full support (team import + event matching). Discovered leagues support event matching only.
 
 ## Support Levels
 
@@ -25,9 +26,10 @@ Leagues have different levels of support:
 
 | Provider | Description |
 |----------|-------------|
-| **ESPN** | Primary provider for most US leagues and international soccer |
-| **TheSportsDB** | Australian sports, rugby, cricket teams, boxing |
-| **HockeyTech** | Canadian and US junior/minor hockey leagues |
+| **ESPN** | Primary provider for most US leagues and international soccer. Discovers 280+ soccer leagues dynamically. |
+| **MLB Stats API** | Minor League Baseball (MiLB) — Triple-A, Double-A, High-A, Single-A, Rookie |
+| **TheSportsDB** | Australian sports, rugby, cricket teams, boxing, CFL, Norwegian hockey |
+| **HockeyTech** | Canadian and US junior/minor hockey leagues (CHL, AHL, ECHL, PWHL, USHL, Junior A) |
 | **Cricbuzz** | Cricket schedules (fallback for TSDB cricket) |
 
 ---
@@ -37,6 +39,7 @@ Leagues have different levels of support:
 | League | ID | Provider |
 |--------|-----|----------|
 | National Football League | `nfl` | ESPN |
+| Canadian Football League | `cfl` | TSDB |
 | NCAA Football | `ncaaf` | ESPN |
 | United Football League | `ufl` | ESPN |
 
@@ -57,13 +60,15 @@ Leagues have different levels of support:
 
 ## Hockey
 
-### NHL & NCAA
+### NHL, NCAA & Olympics
 
 | League | ID | Provider |
 |--------|-----|----------|
 | National Hockey League | `nhl` | ESPN |
 | NCAA Men's Ice Hockey | `ncaah` | ESPN |
 | NCAA Women's Ice Hockey | `ncaawh` | ESPN |
+| Men's Ice Hockey - Olympics | `olymh` | ESPN |
+| Women's Ice Hockey - Olympics | `olywh` | ESPN |
 
 ### Canadian Major Junior (CHL)
 
@@ -112,12 +117,21 @@ Leagues have different levels of support:
 | League | ID | Provider |
 |--------|-----|----------|
 | Major League Baseball | `mlb` | ESPN |
+| Triple-A (MiLB) | `aaa` | MLB Stats |
+| Double-A (MiLB) | `aa` | MLB Stats |
+| High-A (MiLB) | `higha` | MLB Stats |
+| Single-A (MiLB) | `a` | MLB Stats |
+| Rookie (MiLB) | `rookie` | MLB Stats |
+| World Baseball Classic | `wbc` | ESPN |
 | NCAA Baseball | `ncaabb` | ESPN |
 | NCAA Softball | `ncaasbw` | ESPN |
 
 ---
 
 ## Soccer
+
+{: .tip }
+Teamarr automatically discovers **280+ soccer leagues** from ESPN's API during cache refresh. The leagues listed below are the pre-configured ones with full support (team import + event matching). All discovered leagues are available for event matching in event groups — select them from the league picker under the Soccer sport.
 
 ### North America
 
@@ -147,6 +161,7 @@ Leagues have different levels of support:
 | La Liga (Spain) | `laliga` | ESPN |
 | Copa del Rey | `copa-del-rey` | ESPN |
 | Bundesliga (Germany) | `bundesliga` | ESPN |
+| 2. Bundesliga (Germany) | `2-bundesliga` | ESPN |
 | DFB-Pokal | `dfb-pokal` | ESPN |
 | Serie A (Italy) | `seriea` | ESPN |
 | Coppa Italia | `coppa-italia` | ESPN |

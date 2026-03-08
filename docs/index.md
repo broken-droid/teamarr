@@ -2,6 +2,7 @@
 title: Home
 layout: home
 nav_order: 1
+docs_version: "2.3.0"
 ---
 
 <div style="text-align: center; margin-bottom: 2rem;">
@@ -48,8 +49,8 @@ EPG:     Kansas City Chiefs @ Philadelphia Eagles
 
 ## Features
 
-- **280+ leagues, 10+ sports** - Football, basketball, hockey, baseball, soccer (200+ leagues), cricket, lacrosse, MMA, rugby, and more
-- **160+ template variables** - Customize channel names and EPG with team records, scores, venues, broadcasts, standings, playoff status, and more
+- **330+ leagues across 13 sports** - Football, basketball, hockey, baseball, soccer (280+ leagues via ESPN discovery), cricket, lacrosse, MMA, boxing, rugby, volleyball, Australian football, and softball
+- **190+ template variables** - Customize channel names and EPG with team records, scores, venues, broadcasts, standings, playoff status, and more
 - **Flexible matching** - Aliases, fuzzy matching, and configurable stream ordering to handle inconsistent IPTV naming
 - **Channel groups & profiles** - Use existing Dispatcharr groups/profiles or create them dynamically using variables and wildcards
 - **Smart sorting** - Configurable stream and channel sorting modes based on priority rules

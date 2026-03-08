@@ -2,6 +2,7 @@
 title: Dashboard
 parent: User Guide
 nav_order: 2
+docs_version: "2.3.0"
 ---
 
 # Dashboard
@@ -65,14 +66,18 @@ A table showing recent EPG generation runs with:
 
 | Column | Description |
 |--------|-------------|
-| **Status** | Success (✓), failed (✗), or running (spinner) |
-| **Generated At** | Timestamp of the run |
-| **Teams** | Number of teams processed |
-| **Events** | Number of game programmes created |
-| **Filler** | Total filler programmes (pregame + postgame + idle) |
-| **Managed Channels** | Channels created or updated |
+| **Status** | Completed (✓), failed (✗), cancelled (⊘), or running (spinner) |
+| **Time** | Timestamp of the run |
+| **Processed** | Teams / Event Groups processed in this run |
+| **Programmes** | Total programmes generated. Hover for breakdown: Events, Pregame, Postgame, Idle |
+| **Matched** | Streams successfully matched to events. Click for drill-down with search/filter |
+| **Failed** | Streams that could not be matched. Click to see details and use the Fix button to open the event matcher |
+| **Channels** | Active channels after this run |
 | **Duration** | How long the generation took |
 | **Size** | XMLTV file size |
+
+{: .tip }
+Click the **Matched** or **Failed** numbers to open a drill-down modal showing individual stream details, grouped by event group. Use the search bar to filter by group name or stream.
 
 ## Getting Started Guide
 
@@ -81,4 +86,6 @@ When no teams or templates are configured, the dashboard displays a getting star
 1. **Configure Settings** - Connect to Dispatcharr, set EPG output path and timezone
 2. **Create Templates** - Define title/description formats using variables
 3. **Add Teams** - Import teams for team-based EPG (one channel per team)
-4. **Create Event Groups** - Import stream groups for event-based EPG (dynamic channels)
+4. **Create Event Groups** - Import stream groups from Dispatcharr for event-based EPG (dynamic channels)
+
+Each step links directly to the relevant page. Once you have at least one template and either teams or event groups configured, the getting started guide is replaced by the statistics quadrants and generation history.
