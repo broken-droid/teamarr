@@ -96,15 +96,6 @@ Override the global default team filter for this group:
 - **Custom Filter** — define include/exclude teams specific to this group
 - **Bypass for playoffs** — auto-include all playoff games regardless of team filter
 
-## Duplicate Event Handling
-
-When the same sporting event appears in multiple streams:
-
-| Mode | Description |
-|------|-------------|
-| **Consolidate** | Merge streams into one channel (default) |
-| **Separate** | Create a separate channel for each stream |
-
 ## Per-Group Subscription Overrides
 
 By default, groups inherit the global league subscription. To override:

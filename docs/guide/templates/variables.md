@@ -39,11 +39,14 @@ Core identifiers for teams, leagues, and matchups.
 | `{team_abbrev}` | Team abbreviation uppercase | base | `DET` |
 | `{team_abbrev_lower}` | Team abbreviation lowercase | base | `det` |
 | `{team_name_pascal}` | Team name in PascalCase for channel IDs | base | `DetroitLions` |
+| `{team_short}` | Team short name | base | `Lions` |
 | `{opponent}` | Opponent team name | base, .next, .last | `Chicago Bears` |
 | `{opponent_abbrev}` | Opponent team abbreviation uppercase | base, .next, .last | `CHI` |
 | `{opponent_abbrev_lower}` | Opponent abbreviation lowercase | base, .next, .last | `chi` |
+| `{opponent_short}` | Opponent short name | base, .next, .last | `Bears` |
 | `{matchup}` | Full matchup string | base, .next, .last | `Chicago Bears @ Detroit Lions` |
 | `{matchup_abbrev}` | Abbreviated matchup uppercase | base, .next, .last | `CHI @ DET` |
+| `{matchup_short}` | Short name matchup | base, .next, .last | `Bears @ Lions` |
 | `{league}` | League short alias | base | `NFL` |
 | `{league_name}` | League full display name | base | `National Football League` |
 | `{league_id}` | League identifier for URLs | base | `nfl` |
@@ -97,11 +100,13 @@ Positional team references and home/away context.
 | `{home_team_abbrev}` | Home team abbreviation uppercase | base, .next, .last | `DET` |
 | `{home_team_abbrev_lower}` | Home team abbreviation lowercase | base, .next, .last | `det` |
 | `{home_team_pascal}` | Home team name in PascalCase | base, .next, .last | `DetroitLions` |
+| `{home_team_short}` | Home team short name | base, .next, .last | `Lions` |
 | `{home_team_logo}` | Home team logo URL | base, .next, .last | ESPN logo URL |
 | `{away_team}` | Away team name (positional) | base, .next, .last | `Chicago Bears` |
 | `{away_team_abbrev}` | Away team abbreviation uppercase | base, .next, .last | `CHI` |
 | `{away_team_abbrev_lower}` | Away team abbreviation lowercase | base, .next, .last | `chi` |
 | `{away_team_pascal}` | Away team name in PascalCase | base, .next, .last | `ChicagoBears` |
+| `{away_team_short}` | Away team short name | base, .next, .last | `Bears` |
 | `{away_team_logo}` | Away team logo URL | base, .next, .last | ESPN logo URL |
 | `{is_home}` | 'true' if team is home, 'false' if away | base, .next, .last | `true` |
 | `{is_away}` | 'true' if team is away, 'false' if home | base, .next, .last | `false` |

@@ -69,4 +69,4 @@ Cumulative statistics across all generation runs, giving a long-term view of you
 
 ## Scheduling
 
-EPG generation runs automatically on a configurable cron schedule set in **Settings > General**. The default schedule is hourly. You can always trigger an additional run manually using the Generate button.
+EPG generation runs automatically on a configurable cron schedule set in **Settings > EPG**. The default schedule is hourly. You can always trigger an additional run manually using the Generate button.
