@@ -1,7 +1,7 @@
 ---
 title: Channels
 parent: User Guide
-nav_order: 5
+nav_order: 9
 docs_version: "2.3.1"
 ---
 

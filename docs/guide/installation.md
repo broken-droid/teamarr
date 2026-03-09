@@ -2,7 +2,7 @@
 title: Installation
 parent: User Guide
 nav_order: 1
-docs_version: "2.3.0"
+docs_version: "2.3.1"
 ---
 
 # Installation
@@ -48,7 +48,14 @@ services:
       # Useful during development to speed up restarts. Cache can still
       # be refreshed manually via the UI or by the daily scheduled task.
       # - SKIP_CACHE_REFRESH=true
+
+      # Override log directory path (default: /app/data/logs)
+      # - LOG_DIR=/custom/log/path
 ```
+
+### Unraid
+
+An Unraid Docker template is available in the Community Applications store. Search for "Teamarr" to install directly from the Unraid UI.
 
 Open Teamarr at `http://<your-server>:9195`
 
