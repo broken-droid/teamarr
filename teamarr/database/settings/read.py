@@ -369,7 +369,7 @@ def get_display_settings(conn: Connection) -> DisplaySettings:
     cursor = conn.cursor()
     cursor.execute(
         """SELECT time_format, show_timezone, channel_id_format,
-                  xmltv_generator_name, xmltv_generator_url
+                  xmltv_generator_name, xmltv_generator_url, tsdb_api_key
            FROM settings WHERE id = 1"""
     )
     row = cursor.fetchone()
