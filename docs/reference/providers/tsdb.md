@@ -33,12 +33,13 @@ TheSportsDB (TSDB) is a community-driven sports data API. Teamarr uses it as a f
 
 These leagues have low enough event volume to work within free tier limits:
 
-- CFL, Unrivaled, AFL, NRL, Super Rugby, Norwegian Hockey, Boxing
+- CFL, Unrivaled, Norwegian Hockey, Boxing
 
 ### Premium Tier Leagues
 
-These leagues have high event volume and require a premium key for full coverage:
+These leagues have high event volume or unreliable free-tier data and require a premium key for full coverage:
 
+- AFL, NRL, Super Rugby (Australian/rugby)
 - IPL, BBL, SA20 (cricket)
 - Svenska Cupen (soccer)
 
@@ -56,11 +57,11 @@ Get a key at [thesportsdb.com/pricing](https://www.thesportsdb.com/pricing).
 |--------|------|---------|-------|------|
 | Canadian Football League | `cfl` | 4405 | Football | Free |
 | Unrivaled | `unrivaled` | 5622 | Basketball | Free |
-| Australian Football League | `afl` | 4456 | Australian Football | Free |
-| National Rugby League | `nrl` | 4416 | Rugby | Free |
-| Super Rugby Pacific | `super-rugby` | 4551 | Rugby | Free |
 | Norwegian Fjordkraft-ligaen | `norwegian-hockey` | 4926 | Hockey | Free |
 | Boxing | `boxing` | 4445 | Boxing | Free |
+| Australian Football League | `afl` | 4456 | Australian Football | Premium |
+| National Rugby League | `nrl` | 4416 | Rugby | Premium |
+| Super Rugby Pacific | `super-rugby` | 4551 | Rugby | Premium |
 | Indian Premier League | `ipl` | 4460 | Cricket | Premium |
 | Big Bash League | `bbl` | 4461 | Cricket | Premium |
 | SA20 | `sa20` | 5532 | Cricket | Premium |

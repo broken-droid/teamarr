@@ -258,8 +258,11 @@ Cricket leagues are TSDB premium tier. A [premium API key](providers/tsdb.md) is
 
 | League | ID | Provider |
 |--------|-----|----------|
-| National Rugby League (Australia) | `nrl` | TSDB |
-| Super Rugby Pacific | `super-rugby` | TSDB |
+| National Rugby League (Australia) | `nrl` | TSDB **P** |
+| Super Rugby Pacific | `super-rugby` | TSDB **P** |
+
+{: .note }
+Rugby leagues are TSDB premium tier. A [premium API key](providers/tsdb.md) is required for full event coverage.
 
 ---
 
@@ -267,7 +270,10 @@ Cricket leagues are TSDB premium tier. A [premium API key](providers/tsdb.md) is
 
 | League | ID | Provider |
 |--------|-----|----------|
-| Australian Football League | `afl` | TSDB |
+| Australian Football League | `afl` | TSDB **P** |
+
+{: .note }
+AFL is TSDB premium tier. A [premium API key](providers/tsdb.md) is required for full event coverage.
 
 ---
 
