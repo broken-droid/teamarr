@@ -1513,9 +1513,9 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         try:
             free_leagues = [
                 "cfl", "unrivaled", "norwegian-hockey",
-                "nrl", "super-rugby", "boxing",
+                "boxing",
             ]
-            premium_leagues = ["ipl", "bbl", "sa20", "afl"]
+            premium_leagues = ["ipl", "bbl", "sa20", "afl", "nrl", "super-rugby"]
 
             for code in free_leagues:
                 conn.execute(
