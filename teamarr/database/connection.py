@@ -136,6 +136,10 @@ def init_db(db_path: Path | str | None = None) -> None:
             # (schema.sql INSERT OR IGNORE references label and match_terms columns)
             _migrate_exception_keywords_columns(conn)
 
+            # Pre-migration: ensure tsdb_api_key column exists before startup queries
+            # (get_display_settings selects this column; missing for some upgrade paths)
+            _add_column_if_not_exists(conn, "settings", "tsdb_api_key", "TEXT")
+
             # Pre-migration: recreate settings table for v62 lifecycle timing overhaul
             # (SQLite CHECK constraints require table recreation to update)
             _migrate_settings_for_v65(conn)
