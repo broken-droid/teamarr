@@ -1905,6 +1905,7 @@ class ChannelLifecycleService:
             notes=f"Deleted: {reason}",
         )
 
+        conn.commit()
         logger.info("[LIFECYCLE] Deleted channel '%s' (%s)", channel.channel_name, reason)
         return True
 

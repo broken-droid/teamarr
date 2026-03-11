@@ -129,8 +129,6 @@ def create_sort_priority(data: SortPriorityCreate):
                 detail="Failed to create/update sort priority",
             )
 
-        conn.commit()
-
         # Fetch the created/updated entry
         entry = get_sort_priority(conn, data.sport, data.league_code)
 
@@ -155,7 +153,6 @@ def delete_sort_priority_sport(sport: str):
 
     with get_db() as conn:
         delete_sort_priority(conn, sport=sport, league_code=None)
-        conn.commit()
 
     return {"success": True, "sport": sport, "league_code": None}
 
@@ -167,7 +164,6 @@ def delete_sort_priority_league(sport: str, league_code: str):
 
     with get_db() as conn:
         delete_sort_priority(conn, sport=sport, league_code=league_code)
-        conn.commit()
 
     return {"success": True, "sport": sport, "league_code": league_code}
 
@@ -205,7 +201,6 @@ def reorder_sort_priorities(data: SortPriorityReorder):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to reorder priorities",
             )
-        conn.commit()
 
     return {"success": True, "updated": len(data.ordered_list)}
 
@@ -225,7 +220,6 @@ def auto_populate_sort_priorities():
 
     with get_db() as conn:
         added = auto_populate_sort_priorities(conn)
-        conn.commit()
 
     if added == 0:
         message = "No new entries needed - all active leagues already have priorities"

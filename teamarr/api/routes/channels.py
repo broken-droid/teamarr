@@ -274,7 +274,6 @@ def delete_managed_channel(channel_id: int):
 
     with get_db() as conn:
         success = channel_service.delete_channel(conn, channel_id, reason="manual")
-        conn.commit()
 
     if success:
         return DeleteResponse(

@@ -139,7 +139,12 @@ def get_sort_priority(
 
 
 def upsert_sort_priority(
-    conn: Connection, sport: str, league_code: str | None, priority: int
+    conn: Connection,
+    sport: str,
+    league_code: str | None,
+    priority: int,
+    *,
+    commit: bool = True,
 ) -> bool:
     """Insert or update a sort priority entry.
 
@@ -148,6 +153,8 @@ def upsert_sort_priority(
         sport: Sport code (e.g., 'football', 'basketball')
         league_code: League code or None for sport-level priority
         priority: Sort priority value (lower = earlier in channel list)
+        commit: Whether to commit the transaction (default True).
+                Pass False when called as part of a larger transaction.
 
     Returns:
         True if inserted/updated successfully
@@ -163,6 +170,8 @@ def upsert_sort_priority(
             """,
             (sport, league_code, priority),
         )
+        if commit:
+            conn.commit()
         logger.debug(
             "[SORT_PRIORITY] Upserted: sport=%s, league=%s, priority=%d",
             sport,
@@ -198,6 +207,7 @@ def delete_sort_priority(conn: Connection, sport: str, league_code: str | None =
                 (sport, league_code),
             )
 
+        conn.commit()
         if cursor.rowcount > 0:
             logger.info("[SORT_PRIORITY] Deleted: sport=%s, league=%s", sport, league_code)
         return True
@@ -246,6 +256,7 @@ def reorder_sort_priorities(conn: Connection, ordered_list: list[dict]) -> bool:
                     (priority, sport, league_code),
                 )
 
+        conn.commit()
         logger.info("[SORT_PRIORITY] Reordered %d entries", len(ordered_list))
         return True
     except Exception as e:
@@ -317,18 +328,19 @@ def auto_populate_sort_priorities(conn: Connection) -> int:
     for sport in sorted(sports_leagues.keys()):
         # Add sport-level entry if missing
         if (sport, None) not in existing:
-            upsert_sort_priority(conn, sport, None, current_priority)
+            upsert_sort_priority(conn, sport, None, current_priority, commit=False)
             current_priority += 1
             added += 1
 
         # Add league entries for this sport
         for league in sorted(sports_leagues[sport]):
             if (sport, league) not in existing:
-                upsert_sort_priority(conn, sport, league, current_priority)
+                upsert_sort_priority(conn, sport, league, current_priority, commit=False)
                 current_priority += 1
                 added += 1
 
     if added > 0:
+        conn.commit()
         logger.info("[SORT_PRIORITY] Auto-populated %d new entries", added)
 
     return added
