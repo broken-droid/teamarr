@@ -190,6 +190,22 @@ export interface ExceptionKeywordListResponse {
   total: number
 }
 
+export interface FeedSeparationSettings {
+  enabled: boolean
+  home_terms: string[]
+  away_terms: string[]
+  detect_team_names: boolean
+  label_style: "team_name" | "short_name" | "home_away"
+}
+
+export interface FeedSeparationSettingsUpdate {
+  enabled?: boolean
+  home_terms?: string[]
+  away_terms?: string[]
+  detect_team_names?: boolean
+  label_style?: "team_name" | "short_name" | "home_away"
+}
+
 export interface AllSettings {
   dispatcharr: DispatcharrSettings
   lifecycle: LifecycleSettings
@@ -202,6 +218,7 @@ export interface AllSettings {
   channel_numbering?: ChannelNumberingSettings
   stream_ordering?: StreamOrderingSettings
   update_check?: UpdateCheckSettings
+  feed_separation?: FeedSeparationSettings
   epg_generation_counter: number
   schema_version: number
   // UI timezone info (read-only, from environment or fallback to epg_timezone)
@@ -420,6 +437,17 @@ export async function updateUpdateCheckSettings(
 // Check for updates
 export async function checkForUpdates(force: boolean = false): Promise<UpdateInfo> {
   return api.get(`/updates/check?force=${force}`)
+}
+
+// Feed Separation Settings API
+export async function getFeedSeparationSettings(): Promise<FeedSeparationSettings> {
+  return api.get("/settings/feed-separation")
+}
+
+export async function updateFeedSeparationSettings(
+  data: FeedSeparationSettingsUpdate
+): Promise<FeedSeparationSettings> {
+  return api.put("/settings/feed-separation", data)
 }
 
 // Per-League Subscription Config Types

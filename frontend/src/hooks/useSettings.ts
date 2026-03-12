@@ -32,6 +32,8 @@ import {
   getUpdateCheckSettings,
   updateUpdateCheckSettings,
   checkForUpdates,
+  getFeedSeparationSettings,
+  updateFeedSeparationSettings,
   getLeagueConfigs,
   upsertLeagueConfig,
   deleteLeagueConfig,
@@ -48,6 +50,7 @@ import type {
   ChannelNumberingSettingsUpdate,
   StreamOrderingSettingsUpdate,
   UpdateCheckSettingsUpdate,
+  FeedSeparationSettingsUpdate,
 } from "@/api/settings"
 
 export function useSettings() {
@@ -353,6 +356,25 @@ export function useForceCheckForUpdates() {
     mutationFn: () => checkForUpdates(true),
     onSuccess: (data) => {
       queryClient.setQueryData(["updates", "check"], data)
+    },
+  })
+}
+
+export function useFeedSeparationSettings() {
+  return useQuery({
+    queryKey: ["settings", "feed-separation"],
+    queryFn: getFeedSeparationSettings,
+  })
+}
+
+export function useUpdateFeedSeparationSettings() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (data: FeedSeparationSettingsUpdate) =>
+      updateFeedSeparationSettings(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings"] })
     },
   })
 }
