@@ -1571,6 +1571,35 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("[MIGRATE] Schema upgraded to version 68 (feed separation settings)")
         current_version = 68
 
+    # v69: Feed team channel discrimination
+    # Add feed_team_id column to managed_channels and rebuild unique index
+    if current_version < 69:
+        # Check if managed_channels table exists (test schemas may not have it)
+        has_mc = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master "
+            "WHERE type='table' AND name='managed_channels'"
+        ).fetchone()[0]
+
+        if has_mc:
+            _add_column_if_not_exists(conn, "managed_channels", "feed_team_id", "TEXT")
+
+            # Drop old unique index and create new one including feed_team_id
+            conn.execute("DROP INDEX IF EXISTS idx_mc_unique_event")
+            try:
+                conn.execute("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_mc_unique_event_v2
+                    ON managed_channels(event_id, event_provider,
+                        COALESCE(exception_keyword, ''), COALESCE(feed_team_id, ''),
+                        primary_stream_id)
+                    WHERE deleted_at IS NULL
+                """)
+            except Exception as e:
+                logger.warning("[MIGRATE v69] Could not create unique index: %s", e)
+
+        conn.execute("UPDATE settings SET schema_version = 69 WHERE id = 1")
+        logger.info("[MIGRATE] Schema upgraded to version 69 (feed team channel discrimination)")
+        current_version = 69
+
 
 def _dedup_cross_group_channels(conn: sqlite3.Connection) -> None:
     """Merge duplicate channels that exist for the same event across groups.

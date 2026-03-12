@@ -64,6 +64,7 @@ def create_managed_channel(
         "channel_profile_ids",
         "primary_stream_id",
         "exception_keyword",
+        "feed_team_id",
         "home_team",
         "home_team_abbrev",
         "home_team_logo",
@@ -416,10 +417,12 @@ def find_existing_channel(
     exception_keyword: str | None = None,
     stream_id: int | None = None,
     mode: str = "consolidate",
+    feed_team_id: str | None = None,
 ) -> ManagedChannel | None:
     """Find existing channel by event identity (event-scoped).
 
-    Channel identity: (event_id, event_provider, exception_keyword, primary_stream_id).
+    Channel identity: (event_id, event_provider, exception_keyword,
+    feed_team_id, primary_stream_id).
     Searches across ALL source groups — channels are owned by events, not groups.
 
     Args:
@@ -429,6 +432,7 @@ def find_existing_channel(
         exception_keyword: Exception keyword for separate consolidation
         stream_id: Stream ID (for 'separate' mode)
         mode: Duplicate handling mode (consolidate, separate, ignore)
+        feed_team_id: Feed team ID for feed separation (HOME/AWAY channels)
 
     Returns:
         Existing ManagedChannel or None
@@ -465,25 +469,28 @@ def find_existing_channel(
         return None
 
     else:  # consolidate (default)
-        # In consolidate mode, look for channel with same keyword
+        # In consolidate mode, look for channel with same keyword + feed_team
+        # Build WHERE clause dynamically based on nullable fields
+        conditions = ["event_id = ?", "event_provider = ?", "deleted_at IS NULL"]
+        params: list = [event_id, event_provider]
+
         if exception_keyword:
-            cursor = conn.execute(
-                """SELECT * FROM managed_channels
-                   WHERE event_id = ?
-                     AND event_provider = ?
-                     AND exception_keyword = ?
-                     AND deleted_at IS NULL""",
-                (event_id, event_provider, exception_keyword),
-            )
+            conditions.append("exception_keyword = ?")
+            params.append(exception_keyword)
         else:
-            cursor = conn.execute(
-                """SELECT * FROM managed_channels
-                   WHERE event_id = ?
-                     AND event_provider = ?
-                     AND exception_keyword IS NULL
-                     AND deleted_at IS NULL""",
-                (event_id, event_provider),
-            )
+            conditions.append("exception_keyword IS NULL")
+
+        if feed_team_id:
+            conditions.append("feed_team_id = ?")
+            params.append(feed_team_id)
+        else:
+            conditions.append("feed_team_id IS NULL")
+
+        where = " AND ".join(conditions)
+        cursor = conn.execute(
+            f"SELECT * FROM managed_channels WHERE {where}",
+            params,
+        )
         row = cursor.fetchone()
         if row:
             return ManagedChannel.from_row(dict(row))

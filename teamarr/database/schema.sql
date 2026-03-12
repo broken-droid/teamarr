@@ -350,7 +350,7 @@ CREATE TABLE IF NOT EXISTS settings (
         CHECK(feed_label_style IN ('team_name', 'short_name', 'home_away')),
 
     -- Schema Version
-    schema_version INTEGER DEFAULT 68
+    schema_version INTEGER DEFAULT 69
 );
 
 -- Insert default settings
@@ -606,6 +606,9 @@ CREATE TABLE IF NOT EXISTS managed_channels (
     -- Exception keyword that matched (for consolidation override)
     exception_keyword TEXT,
 
+    -- Feed team (for feed separation: HOME/AWAY → team identity)
+    feed_team_id TEXT,                       -- Provider team ID (e.g., "1" for Arsenal)
+
     -- Event Context (cached for display)
     home_team TEXT,
     home_team_abbrev TEXT,
@@ -649,11 +652,11 @@ CREATE INDEX IF NOT EXISTS idx_managed_channels_dispatcharr ON managed_channels(
 CREATE INDEX IF NOT EXISTS idx_managed_channels_tvg ON managed_channels(tvg_id);
 CREATE INDEX IF NOT EXISTS idx_managed_channels_sync ON managed_channels(sync_status);
 
--- Event-scoped unique: one channel per (event, keyword, stream) regardless of source group
+-- Event-scoped unique: one channel per (event, keyword, feed_team, stream) regardless of source group
 -- Includes primary_stream_id to support 'separate' duplicate handling mode
--- (allows multiple channels per event when each has a different primary stream or keyword)
-CREATE UNIQUE INDEX IF NOT EXISTS idx_mc_unique_event
-    ON managed_channels(event_id, event_provider, COALESCE(exception_keyword, ''), primary_stream_id)
+-- (allows multiple channels per event when each has a different primary stream, keyword, or feed team)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mc_unique_event_v2
+    ON managed_channels(event_id, event_provider, COALESCE(exception_keyword, ''), COALESCE(feed_team_id, ''), primary_stream_id)
     WHERE deleted_at IS NULL;
 
 CREATE TRIGGER IF NOT EXISTS update_managed_channels_timestamp

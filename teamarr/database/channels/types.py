@@ -35,6 +35,7 @@ class ManagedChannel:
     channel_profile_ids: list[int] = field(default_factory=list)
     primary_stream_id: int | None = None
     exception_keyword: str | None = None
+    feed_team_id: str | None = None
 
     # Event context
     home_team: str | None = None
@@ -84,6 +85,7 @@ class ManagedChannel:
             channel_profile_ids=profile_ids or [],
             primary_stream_id=row.get("primary_stream_id"),
             exception_keyword=row.get("exception_keyword"),
+            feed_team_id=row.get("feed_team_id"),
             home_team=row.get("home_team"),
             away_team=row.get("away_team"),
             event_date=row.get("event_date"),

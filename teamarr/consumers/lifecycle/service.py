@@ -540,6 +540,10 @@ class ChannelLifecycleService:
                         # This treats each segment as a separate "sub-event"
                         effective_event_id = f"{event_id}-{segment}" if segment else event_id
 
+                        # Feed team separation: extract resolved feed team
+                        feed_team = matched.get("feed_team")
+                        feed_team_id = feed_team.id if feed_team else None
+
                         # Check if event should be excluded based on timing
                         logger.debug(
                             "[LIFECYCLE] Checking stream '%s' for event %s (status=%s)",
@@ -605,6 +609,7 @@ class ChannelLifecycleService:
                             exception_keyword=matched_keyword,
                             stream_id=stream_id,
                             mode=effective_mode,
+                            feed_team_id=feed_team_id,
                         )
 
                         if existing:
@@ -692,6 +697,7 @@ class ChannelLifecycleService:
                             segment=segment,
                             segment_display=segment_display,
                             segment_start=segment_start,
+                            feed_team_id=feed_team_id,
                         )
 
                         if channel_result.success:
@@ -1002,6 +1008,7 @@ class ChannelLifecycleService:
         segment: str | None = None,
         segment_display: str = "",
         segment_start: datetime | None = None,
+        feed_team_id: str | None = None,
     ) -> ChannelCreationResult:
         """Create a new channel in DB and Dispatcharr.
 
@@ -1009,6 +1016,7 @@ class ChannelLifecycleService:
             segment: UFC card segment code (e.g., "prelims", "main_card")
             segment_display: Display name for segment (e.g., "Prelims")
             segment_start: Segment-specific start time (for UFC segments)
+            feed_team_id: Provider team ID for feed separation (HOME/AWAY channels)
         """
         from teamarr.database.channels import (
             add_stream_to_channel,
@@ -1122,6 +1130,7 @@ class ChannelLifecycleService:
                 channel_profile_ids=channel_profile_ids,
                 primary_stream_id=stream_id,
                 exception_keyword=matched_keyword,
+                feed_team_id=feed_team_id,
                 home_team=event.home_team.name if event.home_team else None,
                 away_team=event.away_team.name if event.away_team else None,
                 # Use segment-specific start time for UFC segments, otherwise event start
