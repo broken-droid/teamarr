@@ -492,9 +492,18 @@ class ChannelLifecycleService:
                 duplicate_mode = get_global_consolidation_mode(conn)
 
                 # Profile IDs from global settings (per-league overrides below)
-                from teamarr.database.settings import get_dispatcharr_settings
+                from teamarr.database.settings import (
+                    get_dispatcharr_settings,
+                    get_feed_separation_settings,
+                )
 
                 dispatcharr_settings = get_dispatcharr_settings(conn)
+
+                # Feed separation settings for channel naming
+                feed_settings = get_feed_separation_settings(conn)
+                feed_label_style = (
+                    feed_settings.label_style if feed_settings.enabled else None
+                )
 
                 # Channel group defaults from global settings (per-league overrides in event loop)
                 static_channel_group_id = dispatcharr_settings.default_channel_group_id
@@ -698,6 +707,8 @@ class ChannelLifecycleService:
                             segment_display=segment_display,
                             segment_start=segment_start,
                             feed_team_id=feed_team_id,
+                            feed_team=feed_team,
+                            feed_label_style=feed_label_style,
                         )
 
                         if channel_result.success:
@@ -1009,6 +1020,8 @@ class ChannelLifecycleService:
         segment_display: str = "",
         segment_start: datetime | None = None,
         feed_team_id: str | None = None,
+        feed_team=None,
+        feed_label_style: str | None = None,
     ) -> ChannelCreationResult:
         """Create a new channel in DB and Dispatcharr.
 
@@ -1017,6 +1030,8 @@ class ChannelLifecycleService:
             segment_display: Display name for segment (e.g., "Prelims")
             segment_start: Segment-specific start time (for UFC segments)
             feed_team_id: Provider team ID for feed separation (HOME/AWAY channels)
+            feed_team: Team object for feed label generation
+            feed_label_style: Label style ('team_name', 'short_name', 'home_away')
         """
         from teamarr.database.channels import (
             add_stream_to_channel,
@@ -1036,7 +1051,10 @@ class ChannelLifecycleService:
         tvg_id = generate_event_tvg_id(event_id, event_provider, segment, matched_keyword)
 
         # Generate channel name (segment resolved via {card_segment_display} template variable)
-        channel_name = self._generate_channel_name(event, template, matched_keyword, segment)
+        channel_name = self._generate_channel_name(
+            event, template, matched_keyword, segment,
+            feed_team=feed_team, feed_label_style=feed_label_style,
+        )
 
         # Get channel number using global mode (AUTO/MANUAL)
         event_league = getattr(event, "league", None)
@@ -1198,6 +1216,8 @@ class ChannelLifecycleService:
         template,
         exception_keyword: str | None,
         segment: str | None = None,
+        feed_team=None,
+        feed_label_style: str | None = None,
     ) -> str:
         """Generate channel name for an event using template.
 
@@ -1208,6 +1228,10 @@ class ChannelLifecycleService:
         If not included and a keyword is present, it's auto-appended as
         "(Keyword)" to maintain backward compatibility.
 
+        When feed_team is provided, auto-appends a feed label based on
+        feed_label_style: 'team_name' → "(Orioles)", 'short_name' →
+        "(BAL)", 'home_away' → "(Home)" or "(Away)".
+
         Also prepends "Postponed: " to the channel name if the event is
         postponed and the prepend_postponed_label setting is enabled.
 
@@ -1216,6 +1240,8 @@ class ChannelLifecycleService:
             template: Required - dict or EventTemplateConfig with channel name format
             exception_keyword: Optional keyword for naming
             segment: UFC card segment code (e.g., "prelims", "main_card")
+            feed_team: Team object for feed separation (if detected)
+            feed_label_style: Label style ('team_name', 'short_name', 'home_away')
 
         Raises:
             ValueError: If template is missing or has no channel name format
@@ -1258,6 +1284,14 @@ class ChannelLifecycleService:
         if exception_keyword and not template_uses_keyword:
             base_name = f"{base_name} ({exception_keyword})"
 
+        # Auto-append feed label when feed_team is present
+        if feed_team and feed_label_style:
+            feed_label = self._build_feed_label(
+                feed_team, event, feed_label_style
+            )
+            if feed_label:
+                base_name = f"{base_name} ({feed_label})"
+
         # Prepend "POSTPONED | " if event is postponed and setting is enabled
         if is_event_postponed(event):
             from teamarr.database.settings import get_epg_settings
@@ -1297,6 +1331,30 @@ class ChannelLifecycleService:
         text = re.sub(r"\s{2,}", " ", text)
 
         return text.strip()
+
+    @staticmethod
+    def _build_feed_label(feed_team, event: Event, style: str) -> str:
+        """Build the feed label based on the configured style.
+
+        Args:
+            feed_team: Team object (the resolved feed team)
+            event: Event (to determine home/away)
+            style: 'team_name', 'short_name', or 'home_away'
+
+        Returns:
+            Label string (e.g., "Orioles", "BAL", "Home")
+        """
+        if style == "home_away":
+            is_home = (
+                hasattr(event, "home_team")
+                and event.home_team
+                and event.home_team.id == feed_team.id
+            )
+            return "Home" if is_home else "Away"
+        elif style == "short_name":
+            return feed_team.short_name or feed_team.name
+        else:  # team_name (default)
+            return feed_team.name
 
     def _resolve_logo_url(
         self,
@@ -1450,8 +1508,29 @@ class ChannelLifecycleService:
 
             # 1. Check channel name (template resolution) - V1 parity
             matched_keyword = getattr(existing, "exception_keyword", None)
+
+            # Resolve feed team for name generation (from stored feed_team_id)
+            sync_feed_team = None
+            sync_feed_label_style = None
+            stored_feed_team_id = getattr(existing, "feed_team_id", None)
+            if stored_feed_team_id and event:
+                from teamarr.database.settings import get_feed_separation_settings
+
+                with self._db_factory() as settings_conn:
+                    fs = get_feed_separation_settings(settings_conn)
+                    if fs.enabled:
+                        sync_feed_label_style = fs.label_style
+                        if (event.home_team
+                                and event.home_team.id == stored_feed_team_id):
+                            sync_feed_team = event.home_team
+                        elif (event.away_team
+                                and event.away_team.id == stored_feed_team_id):
+                            sync_feed_team = event.away_team
+
             expected_name = self._generate_channel_name(
-                event, template, matched_keyword, segment
+                event, template, matched_keyword, segment,
+                feed_team=sync_feed_team,
+                feed_label_style=sync_feed_label_style,
             )
             if expected_name != current_channel.name:
                 update_data["name"] = expected_name
