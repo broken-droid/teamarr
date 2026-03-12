@@ -981,6 +981,13 @@ class EventGroupProcessor:
                 streams, match_result, stream_timezone=group.stream_timezone
             )
 
+            # Step 4a: Resolve feed hints to actual teams
+            feed_settings = get_feed_separation_settings(conn)
+            if feed_settings.enabled:
+                matched_streams = self._resolve_feed_teams(
+                    matched_streams, feed_settings.detect_team_names
+                )
+
             # Sort channels: sport → league → time → event_id (fixed order since v59)
             matched_streams = self._sort_matched_streams(matched_streams)
 
@@ -1440,6 +1447,7 @@ class EventGroupProcessor:
                             "stream": stream,
                             "event": result.event,
                             "card_segment": result.card_segment,  # UFC segment from classifier
+                            "feed_hint": result.feed_hint,  # "home", "away", or None
                         }
                     )
 
@@ -1448,6 +1456,77 @@ class EventGroupProcessor:
         matched = self._expand_ufc_segments(matched, stream_timezone)
 
         return matched
+
+    def _resolve_feed_teams(
+        self,
+        matched_streams: list[dict],
+        detect_team_names: bool,
+    ) -> list[dict]:
+        """Resolve feed hints to actual teams (Phase 2 feed separation).
+
+        For each matched stream:
+        - feed_hint="home" → feed_team = event.home_team
+        - feed_hint="away" → feed_team = event.away_team
+        - No hint + detect_team_names → scan stream name for team name/short_name
+        - No match → feed_team = None (normal channel)
+
+        Args:
+            matched_streams: List of matched stream dicts with 'event', 'stream', 'feed_hint'
+            detect_team_names: Whether to scan stream names for team name patterns
+        """
+        for entry in matched_streams:
+            event = entry.get("event")
+            feed_hint = entry.get("feed_hint")
+            feed_team = None
+
+            if event and feed_hint == "home":
+                feed_team = event.home_team
+            elif event and feed_hint == "away":
+                feed_team = event.away_team
+            elif event and not feed_hint and detect_team_names:
+                # Scan stream name for team name/short_name
+                stream_name = entry["stream"]["name"].lower()
+                feed_team = self._detect_team_in_stream_name(
+                    stream_name, event.home_team, event.away_team
+                )
+
+            entry["feed_team"] = feed_team
+
+            if feed_team:
+                logger.debug(
+                    "[FEED] Stream '%s' → feed_team=%s (hint=%s)",
+                    entry["stream"]["name"][:50],
+                    feed_team.name,
+                    feed_hint or "team_name_detect",
+                )
+
+        return matched_streams
+
+    @staticmethod
+    def _detect_team_in_stream_name(
+        stream_name_lower: str, home_team, away_team
+    ):
+        """Detect team identity in stream name by checking name/short_name/abbreviation.
+
+        Checks home_team first, then away_team. Returns the matched Team or None.
+        Uses word boundary-like matching to avoid false positives.
+        """
+        import re
+
+        for team in (home_team, away_team):
+            # Check full name, short_name, and abbreviation (3+ chars to avoid false positives)
+            candidates = [team.name]
+            if team.short_name and team.short_name != team.name:
+                candidates.append(team.short_name)
+            if team.abbreviation and len(team.abbreviation) >= 3:
+                candidates.append(team.abbreviation)
+
+            for candidate in candidates:
+                pattern = re.compile(rf"\b{re.escape(candidate.lower())}\b")
+                if pattern.search(stream_name_lower):
+                    return team
+
+        return None
 
     def _expand_ufc_segments(
         self, matched_streams: list[dict], stream_timezone: str | None = None
