@@ -23,7 +23,7 @@ row_factory = sqlite3.Row   (dict-like access)
 
 ## Schema Version
 
-**Current version: 67** (stored in `settings.schema_version`)
+**Current version: 69** (stored in `settings.schema_version`)
 
 Schema changes use the [checkpoint + incremental migration](migrations) system. The schema source of truth is `teamarr/database/schema.sql`.
 
