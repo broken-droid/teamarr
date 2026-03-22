@@ -349,8 +349,14 @@ CREATE TABLE IF NOT EXISTS settings (
     feed_label_style TEXT DEFAULT 'team_name'           -- How to label feeds in channel names
         CHECK(feed_label_style IN ('team_name', 'short_name', 'home_away')),
 
+    -- Emby Integration (Live TV Guide Refresh)
+    emby_enabled BOOLEAN DEFAULT 0,
+    emby_url TEXT,
+    emby_username TEXT,
+    emby_password TEXT,
+
     -- Schema Version
-    schema_version INTEGER DEFAULT 69
+    schema_version INTEGER DEFAULT 71
 );
 
 -- Insert default settings
@@ -429,6 +435,10 @@ CREATE TABLE IF NOT EXISTS event_epg_groups (
     custom_regex_teams_enabled BOOLEAN DEFAULT 0,
     custom_regex_date TEXT,                  -- Custom pattern to extract date
     custom_regex_date_enabled BOOLEAN DEFAULT 0,
+    custom_regex_month TEXT,                 -- Custom pattern to extract month separately
+    custom_regex_month_enabled BOOLEAN DEFAULT 0,
+    custom_regex_day TEXT,                   -- Custom pattern to extract day separately
+    custom_regex_day_enabled BOOLEAN DEFAULT 0,
     custom_regex_time TEXT,                  -- Custom pattern to extract time
     custom_regex_time_enabled BOOLEAN DEFAULT 0,
     custom_regex_league TEXT,                -- Custom pattern to extract league hint

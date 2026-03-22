@@ -1604,6 +1604,29 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         logger.info("[MIGRATE] Schema upgraded to version 69 (feed team channel discrimination)")
         current_version = 69
 
+    if current_version < 70:
+        _add_column_if_not_exists(conn, "event_epg_groups", "custom_regex_month", "TEXT")
+        _add_column_if_not_exists(
+            conn, "event_epg_groups", "custom_regex_month_enabled", "BOOLEAN DEFAULT 0"
+        )
+        _add_column_if_not_exists(conn, "event_epg_groups", "custom_regex_day", "TEXT")
+        _add_column_if_not_exists(
+            conn, "event_epg_groups", "custom_regex_day_enabled", "BOOLEAN DEFAULT 0"
+        )
+
+        conn.execute("UPDATE settings SET schema_version = 70 WHERE id = 1")
+        logger.info("[MIGRATE] Schema upgraded to version 70 (separate month/day date extraction)")
+        current_version = 70
+
+    if current_version < 71:
+        _add_column_if_not_exists(conn, "settings", "emby_enabled", "BOOLEAN DEFAULT 0")
+        _add_column_if_not_exists(conn, "settings", "emby_url", "TEXT")
+        _add_column_if_not_exists(conn, "settings", "emby_username", "TEXT")
+        _add_column_if_not_exists(conn, "settings", "emby_password", "TEXT")
+        conn.execute("UPDATE settings SET schema_version = 71 WHERE id = 1")
+        logger.info("[MIGRATE] Schema upgraded to version 71 (Emby integration)")
+        current_version = 71
+
 
 def _dedup_cross_group_channels(conn: sqlite3.Connection) -> None:
     """Merge duplicate channels that exist for the same event across groups.

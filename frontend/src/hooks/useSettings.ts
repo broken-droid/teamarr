@@ -37,6 +37,9 @@ import {
   getLeagueConfigs,
   upsertLeagueConfig,
   deleteLeagueConfig,
+  getEmbySettings,
+  updateEmbySettings,
+  testEmbyConnection,
 } from "@/api/settings"
 import type {
   DispatcharrSettings,
@@ -51,6 +54,7 @@ import type {
   StreamOrderingSettingsUpdate,
   UpdateCheckSettingsUpdate,
   FeedSeparationSettingsUpdate,
+  EmbySettings,
 } from "@/api/settings"
 
 export function useSettings() {
@@ -412,5 +416,32 @@ export function useDeleteLeagueConfig() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["league-configs"] })
     },
+  })
+}
+
+// Emby Settings Hooks
+export function useEmbySettings() {
+  return useQuery({
+    queryKey: ["settings", "emby"],
+    queryFn: getEmbySettings,
+  })
+}
+
+export function useUpdateEmbySettings() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (data: Partial<EmbySettings>) =>
+      updateEmbySettings(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings"] })
+    },
+  })
+}
+
+export function useTestEmbyConnection() {
+  return useMutation({
+    mutationFn: (data?: { url?: string; username?: string; password?: string }) =>
+      testEmbyConnection(data),
   })
 }

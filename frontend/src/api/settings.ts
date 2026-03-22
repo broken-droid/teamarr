@@ -206,6 +206,20 @@ export interface FeedSeparationSettingsUpdate {
   label_style?: "team_name" | "short_name" | "home_away"
 }
 
+export interface EmbySettings {
+  enabled: boolean
+  url: string | null
+  username: string | null
+  password: string | null
+}
+
+export interface EmbyTestResponse {
+  success: boolean
+  server_name?: string | null
+  server_version?: string | null
+  error?: string | null
+}
+
 export interface AllSettings {
   dispatcharr: DispatcharrSettings
   lifecycle: LifecycleSettings
@@ -219,6 +233,7 @@ export interface AllSettings {
   stream_ordering?: StreamOrderingSettings
   update_check?: UpdateCheckSettings
   feed_separation?: FeedSeparationSettings
+  emby?: EmbySettings
   epg_generation_counter: number
   schema_version: number
   // UI timezone info (read-only, from environment or fallback to epg_timezone)
@@ -481,4 +496,17 @@ export async function upsertLeagueConfig(
 
 export async function deleteLeagueConfig(leagueCode: string): Promise<void> {
   return api.delete(`/league-configs/${encodeURIComponent(leagueCode)}`)
+}
+
+// Emby Settings API
+export async function getEmbySettings(): Promise<EmbySettings> {
+  return api.get("/settings/emby")
+}
+
+export async function updateEmbySettings(data: Partial<EmbySettings>): Promise<EmbySettings> {
+  return api.put("/settings/emby", data)
+}
+
+export async function testEmbyConnection(data?: { url?: string; username?: string; password?: string }): Promise<EmbyTestResponse> {
+  return api.post("/emby/test", data || {})
 }
