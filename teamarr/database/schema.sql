@@ -354,6 +354,7 @@ CREATE TABLE IF NOT EXISTS settings (
     emby_url TEXT,
     emby_username TEXT,
     emby_password TEXT,
+    emby_api_key TEXT,
 
     -- Schema Version
     schema_version INTEGER DEFAULT 71
